@@ -89,7 +89,7 @@ func (b *Buffer) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	writer.Header().Set("Content-Type", "text/plain")
+	writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	writer.Header().Set("Access-Control-Allow-Origin", "*")
 	writer.Header().Set("Access-Control-Expose-Headers", "Transfer-Encoding")
 
