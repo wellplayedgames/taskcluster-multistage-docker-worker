@@ -63,8 +63,12 @@ func LogClose(log logr.Logger, c io.Closer, msg string) {
 
 func prettyValue(v interface{}) string {
 	if a, ok := v.([]string); ok {
-		by, _ := json.Marshal(&a)
-		return string(by)
+		if a == nil {
+			return "[]"
+		} else {
+			by, _ := json.Marshal(&a)
+			return string(by)
+		}
 	}
 
 	s := fmt.Sprintf("%v", v)
