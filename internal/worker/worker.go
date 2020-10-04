@@ -75,18 +75,6 @@ func prettyValue(v interface{}) string {
 
 func fancyLog(e genericr.Entry)  string {
 	now := time.Now().UTC().Format(time.RFC3339)[:20]
-
-	// Find step key
-	stepIdx := -1
-	step := ""
-	for i := 0; i < len(e.Fields); i += 2 {
-		if s, ok := e.Fields[i].(string); ok && s == "step" {
-			stepIdx = i
-			step = fmt.Sprintf("%v", e.Fields[i + 1])
-			break
-		}
-	}
-
 	buf := bytes.NewBuffer(make([]byte, 0, 160))
 	buf.WriteString(now)
 
@@ -95,10 +83,7 @@ func fancyLog(e genericr.Entry)  string {
 		buf.WriteString(e.Name)
 	}
 
-	if len(step) > 0 {
-		buf.WriteString(" step ")
-		buf.WriteString(step)
-	}
+	buf.WriteByte(' ')
 
 	l := buf.Len()
 	for l < 30 {
@@ -118,10 +103,6 @@ func fancyLog(e genericr.Entry)  string {
 	}
 
 	for i := 0; i < len(e.Fields); i += 2 {
-		if i == stepIdx {
-			continue
-		}
-
 		buf.WriteByte(' ')
 		if s, ok := e.Fields[i].(string); ok {
 			if s == "" {
@@ -263,7 +244,11 @@ func dockerPull(ctx context.Context, log logr.Logger, cl client.APIClient, image
 		lerr = json.Unmarshal(line, &status)
 		if lerr == nil {
 			if !strings.HasSuffix(status.Status, "ing") {
-				log.Info(status.Status, "id", status.ID)
+				if status.ID == "" {
+					log.Info(status.Status)
+				} else {
+					log.Info(fmt.Sprintf("%s: %s", status.ID, status.Status))
+				}
 			}
 		} else {
 			log.Info(string(line))
@@ -611,7 +596,8 @@ func (w *Worker) resolveValueFrom(ctx context.Context, claim *tcqueue.TaskClaim,
 }
 
 func (w *Worker) runStep(ctx context.Context, log logr.Logger, wr io.Writer, cl client.APIClient, claim *tcqueue.TaskClaim, rootContainer string, stepIdx int, step *Step, deps []<-chan error, ch chan<- error) {
-	log = log.WithValues("step", stepIdx)
+	pullLog := log.WithName(fmt.Sprintf("pull %d", stepIdx))
+	log = log.WithName(fmt.Sprintf("step %d", stepIdx))
 
 	var err error
 	defer func() {
@@ -620,7 +606,7 @@ func (w *Worker) runStep(ctx context.Context, log logr.Logger, wr io.Writer, cl 
 	}()
 
 	// Pull the image.
-	err = dockerPull(ctx, log, cl, step.Image)
+	err = dockerPull(ctx, pullLog, cl, step.Image)
 	if err != nil {
 		return
 	}
@@ -793,8 +779,8 @@ func (w *Worker) runTaskLogic(ctx context.Context, syslog, log logr.Logger, slot
 // RunTask runs a single task run to completion.
 func (w *Worker) RunTask(ctx context.Context, slot int, claim *tcqueue.TaskClaim) {
 	log := w.log.WithValues("taskId", claim.Status.TaskID, "runId", claim.RunID)
-	log.Info(aurora.Green("Starting task run").String())
-	defer log.Info(aurora.Green("Finished task run").String())
+	log.Info("Starting task run")
+	defer log.Info("Finished task run")
 
 	credentials := w.config.Credentials()
 	queue := tcqueue.New(credentials, w.config.RootURL)
