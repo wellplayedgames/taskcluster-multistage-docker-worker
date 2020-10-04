@@ -1,8 +1,6 @@
 package worker
 
 import (
-	"os"
-
 	"github.com/taskcluster/taskcluster/v37/clients/client-go"
 )
 
@@ -20,7 +18,6 @@ type Config struct {
 	WorkerID      string `json:"workerId"`
 
 	PublicIP         string  `json:"publicIp,omitempty"`
-	DockerExternalIP *string `json:"dockerExternalIp,omitempty"`
 
 	LiveLogPort     int    `json:"liveLogPort,omitempty"`
 	LiveLogCertPath string `json:"liveLogCertPath,omitempty"`
@@ -35,9 +32,6 @@ type Config struct {
 
 	WSTAudience  string `json:"wstAudience,omitempty"`
 	WSTServerURL string `json:"wstServerURL,omitempty"`
-
-	LiveLogPath          string `json:"liveLogPath,omitempty"`
-	TaskclusterProxyPath string `json:"taskclusterProxyPath,omitempty"`
 }
 
 // DefaultConfig is the recommended base configuration for the worker.
@@ -52,21 +46,10 @@ var DefaultConfig = Config{
 	TaskclusterProxyImage: "taskcluster/taskcluster-proxy:v37.3.0",
 
 	ConcurrentTasks: 1,
-
-	LiveLogPath:          "livelog",
-	TaskclusterProxyPath: "taskcluster-proxy",
 }
 
 // ParseEnv fetches config from the environment and merges it in.
 func (c *Config) ParseEnv() error {
-	if v := os.Getenv("LIVELOG"); v != "" {
-		c.LiveLogPath = v
-	}
-
-	if v := os.Getenv("TASKCLUSTER_PROXY"); v != "" {
-		c.TaskclusterProxyPath = v
-	}
-
 	return nil
 }
 
