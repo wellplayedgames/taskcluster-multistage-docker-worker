@@ -23,8 +23,6 @@ type Config struct {
 	LiveLogCertPath string `json:"liveLogCertPath,omitempty"`
 	LiveLogKeyPath  string `json:"liveLogCertPath,omitempty"`
 
-	TasksDir string `json:"tasksDir,omitempty"`
-
 	DindImage             string `json:"dindImage,omitempty"`
 	TaskclusterProxyImage string `json:"taskclusterProxyImage,omitempty"`
 
@@ -39,8 +37,6 @@ var DefaultConfig = Config{
 	PublicIP: "localhost",
 
 	LiveLogPort: 13000,
-
-	TasksDir: "tasks",
 
 	DindImage:             "docker:dind",
 	TaskclusterProxyImage: "taskcluster/taskcluster-proxy:v37.3.0",

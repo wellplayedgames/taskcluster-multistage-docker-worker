@@ -2,7 +2,6 @@ package worker
 
 import (
 	"context"
-	"os"
 	"time"
 
 	"github.com/cenkalti/backoff/v3"
@@ -39,14 +38,6 @@ type Worker struct {
 
 // NewWorker creates a new worker given the configuration and sandbox factory.
 func NewWorker(log logr.Logger, config *config.Config, factory cri.SandboxFactory) (*Worker, error) {
-	// Make tasks directory.
-	if info, err := os.Stat(config.TasksDir); (err != nil) || !info.IsDir() {
-		err = os.Mkdir(config.TasksDir, 0775)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	l, err := livelog.New(log, config)
 	if err != nil {
 		return nil, err

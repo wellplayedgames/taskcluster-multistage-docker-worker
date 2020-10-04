@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"strconv"
 	"time"
 
@@ -170,20 +168,6 @@ func (w *Worker) runTaskLogic(ctx context.Context, syslog, log logr.Logger, slot
 	err := json.Unmarshal(claim.Task.Payload, &payload)
 	if err != nil {
 		return exception.MalformedPayload(err)
-	}
-
-	// Create working directory.
-	dir := filepath.Join(w.config.TasksDir, fmt.Sprintf("%s_%d", claim.Status.TaskID, claim.RunID))
-	err = os.Mkdir(dir, 0775)
-	if err != nil {
-		return exception.InternalError(fmt.Errorf("failed to create task dir: %w", err))
-	}
-	defer os.RemoveAll(dir)
-
-	workspaceDir := filepath.Join(dir, "workspace")
-	err = os.Mkdir(workspaceDir, 0775)
-	if err != nil {
-		return exception.InternalError(fmt.Errorf("failed to create workspace: %w", err))
 	}
 
 	// Create Sandbox
