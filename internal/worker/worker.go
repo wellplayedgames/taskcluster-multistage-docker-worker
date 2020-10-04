@@ -3,13 +3,13 @@ package worker
 import (
 	"archive/tar"
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/docker/go-connections/nat"
-	"github.com/taskcluster/taskcluster/v37/clients/client-go/tcsecrets"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -23,9 +23,12 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
+	"github.com/docker/go-connections/nat"
 	"github.com/go-logr/logr"
+	"github.com/logrusorgru/aurora/v3"
 	tcclient "github.com/taskcluster/taskcluster/v37/clients/client-go"
 	"github.com/taskcluster/taskcluster/v37/clients/client-go/tcqueue"
+	"github.com/taskcluster/taskcluster/v37/clients/client-go/tcsecrets"
 	"github.com/tidwall/gjson"
 	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/exception"
 	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/pubsubbuffer"
@@ -47,6 +50,166 @@ func taskCredentials(c *tcqueue.TaskCredentials) *tcclient.Credentials {
 		AccessToken: c.AccessToken,
 		Certificate: c.Certificate,
 	}
+}
+
+func copyToLog(r io.Reader, log logr.Logger) error {
+	rd := bufio.NewReader(r)
+
+	for {
+		line, _, err := rd.ReadLine()
+		if err == io.EOF {
+			return nil
+		} else if err != nil {
+			return err
+		}
+
+		log.Info(string(line))
+	}
+}
+
+func prettyValue(v interface{}) string {
+	s := fmt.Sprintf("%v", v)
+	by, _ := json.Marshal(&s)
+	return string(by)
+}
+
+func fancyLog(e genericr.Entry)  string {
+	now := time.Now().UTC().Format(time.RFC3339)[:20]
+
+	// Find step key
+	stepIdx := -1
+	step := ""
+	for i := 0; i < len(e.Fields); i += 2 {
+		if s, ok := e.Fields[i].(string); ok && s == "step" {
+			stepIdx = i
+			step = fmt.Sprintf("%v", e.Fields[i + 1])
+			break
+		}
+	}
+
+	buf := bytes.NewBuffer(make([]byte, 0, 160))
+	buf.WriteString(now)
+
+	if len(e.Name) > 0 {
+		buf.WriteByte(' ')
+		buf.WriteString(e.Name)
+	}
+
+	if len(step) > 0 {
+		buf.WriteString(" step ")
+		buf.WriteString(step)
+	}
+
+	l := buf.Len()
+	for l < 30 {
+		buf.WriteByte(' ')
+		l += 1
+	}
+
+	if e.Error != nil {
+		buf.WriteString(aurora.Red(e.Message).String())
+	} else {
+		buf.WriteString(e.Message)
+	}
+
+	if e.Error != nil {
+		buf.WriteString(" error=")
+		buf.WriteString(prettyValue(e.Error.Error()))
+	}
+
+	for i := 0; i < len(e.Fields); i += 2 {
+		if i == stepIdx {
+			continue
+		}
+
+		buf.WriteByte(' ')
+		if s, ok := e.Fields[i].(string); ok {
+			if s == "" {
+				continue
+			}
+
+			buf.WriteString(s)
+		} else {
+			buf.WriteString(prettyValue(e.Fields[i]))
+		}
+		buf.WriteByte('=')
+
+		if len(e.Fields) > i {
+			buf.WriteString(prettyValue(e.Fields[i+1]))
+		} else {
+			buf.WriteString("error")
+		}
+	}
+
+	return buf.String()
+}
+
+func parseDockerLogs(r io.Reader, w io.Writer) error {
+	max := 4096
+	buf := make([]byte, max)
+
+	for {
+		_, err := io.ReadFull(r, buf[:8])
+		if err != nil {
+			return err
+		}
+
+		streamType := buf[0]
+		header := "\033[0m"
+		if streamType == 2 {
+			header = fmt.Sprintf("\033[%sm", aurora.RedFg.Nos(true))
+		}
+
+		_, err = w.Write([]byte(header))
+		if err != nil {
+			return err
+		}
+
+		n := int(binary.BigEndian.Uint32(buf[4:8]))
+		for n > 0 {
+			toRead := int(n)
+			if toRead > max {
+				toRead = max
+			}
+
+			_, err := io.ReadFull(r, buf[:toRead])
+			if err != nil {
+				return err
+			}
+
+
+			_, err = w.Write(buf[:toRead])
+			if err != nil {
+				return err
+			}
+
+			n -= toRead
+		}
+	}
+}
+
+func dockerLogs(ctx context.Context, log logr.Logger, cl client.APIClient, id string) error {
+	rd, err := cl.ContainerLogs(ctx, id, types.ContainerLogsOptions{
+		Follow:     true,
+		ShowStdout: true,
+		ShowStderr: true,
+	})
+	if err != nil {
+		return err
+	}
+	defer rd.Close()
+
+	pr, pw := io.Pipe()
+
+	go func() {
+		err := fmt.Errorf("panic")
+		defer func() {
+			pw.CloseWithError(err)
+		}()
+		err = parseDockerLogs(rd, pw)
+	}()
+
+	return copyToLog(pr, log)
 }
 
 func canonicalImage(image string) string {
@@ -405,23 +568,16 @@ func (w *Worker) startDind(ctx context.Context, log logr.Logger, claim *tcqueue.
 	return dindClient, dindContainer.ID, nil
 }
 
-func watchContainer(ctx context.Context, cl client.APIClient, id string, wr io.Writer, ch chan<- error) {
+func watchContainer(ctx context.Context, log logr.Logger, cl client.APIClient, id string, ch chan<- error) {
 	var err error
 	defer func() {
 		ch <- err
 	}()
 
-	rd, err := cl.ContainerLogs(ctx, id, types.ContainerLogsOptions{
-		Follow:     true,
-		ShowStdout: true,
-		ShowStderr: true,
-	})
+	err = dockerLogs(ctx, log, cl, id)
 	if err != nil {
 		return
 	}
-	defer rd.Close()
-
-	_, err = io.Copy(wr, rd)
 
 	resp, err := cl.ContainerInspect(ctx, id)
 	if err != nil {
@@ -432,9 +588,7 @@ func watchContainer(ctx context.Context, cl client.APIClient, id string, wr io.W
 		panic(fmt.Errorf("container was still running"))
 	}
 
-	if resp.State.ExitCode != 0 {
-		fmt.Fprintf(wr, "unexpected exit code: %d\n", resp.State.ExitCode)
-	}
+	log.Info("exited with code: %d\n", resp.State.ExitCode)
 }
 
 func (w *Worker) resolveValueFrom(ctx context.Context, claim *tcqueue.TaskClaim, valueFrom *ValueFrom) (result string, err error) {
@@ -517,22 +671,14 @@ func (w *Worker) runStep(ctx context.Context, log logr.Logger, wr io.Writer, cl 
 	}
 	defer cleanupContainer(log, cl, container.ID)
 
+	log.Info(aurora.Green("Starting step").String(), "command", step.Command, "args", step.Args)
+
 	err = cl.ContainerStart(ctx, container.ID, types.ContainerStartOptions{})
 	if err != nil {
 		return
 	}
 
-	rd, err := cl.ContainerLogs(ctx, container.ID, types.ContainerLogsOptions{
-		Follow:     true,
-		ShowStdout: true,
-		ShowStderr: true,
-	})
-	if err != nil {
-		return
-	}
-	defer rd.Close()
-
-	_, err = io.Copy(wr, rd)
+	err = dockerLogs(ctx, log, cl, container.ID)
 	if err != nil {
 		return
 	}
@@ -545,6 +691,8 @@ func (w *Worker) runStep(ctx context.Context, log logr.Logger, wr io.Writer, cl 
 	if resp.State.ExitCode != 0 {
 		err = fmt.Errorf("exited with code %d", resp.State.ExitCode)
 	}
+
+	log.Info(aurora.Green("Step completed").String())
 }
 
 func (w *Worker) runTaskLogic(ctx context.Context, syslog, log logr.Logger, slot int, claim *tcqueue.TaskClaim, wr io.Writer) error {
@@ -591,6 +739,8 @@ func (w *Worker) runTaskLogic(ctx context.Context, syslog, log logr.Logger, slot
 		Image: w.config.TaskclusterProxyImage,
 		Volumes: map[string]struct{}{
 			"/workspace": struct{}{},
+			"/home": struct{}{},
+			"/root": struct{}{},
 		},
 		Entrypoint: []string{"/taskcluster-proxy"},
 		Env: []string{
@@ -613,8 +763,8 @@ func (w *Worker) runTaskLogic(ctx context.Context, syslog, log logr.Logger, slot
 	startCh := make(chan error, 1)
 	nextCh := startCh
 	exitCh := make(chan error, 2)
-	go watchContainer(ctx, w.docker, dindID, os.Stderr, exitCh)
-	go watchContainer(ctx, dindClient, proxyContainer.ID, os.Stderr, exitCh)
+	go watchContainer(ctx, syslog, w.docker, dindID, exitCh)
+	go watchContainer(ctx, syslog, dindClient, proxyContainer.ID, exitCh)
 
 	// Configure containers
 	for idx := range payload.Steps {
@@ -643,8 +793,8 @@ func (w *Worker) runTaskLogic(ctx context.Context, syslog, log logr.Logger, slot
 // RunTask runs a single task run to completion.
 func (w *Worker) RunTask(ctx context.Context, slot int, claim *tcqueue.TaskClaim) {
 	log := w.log.WithValues("taskId", claim.Status.TaskID, "runId", claim.RunID)
-	log.Info("Starting task run")
-	defer log.Info("Finished task run")
+	log.Info(aurora.Green("Starting task run").String())
+	defer log.Info(aurora.Green("Finished task run").String())
 
 	credentials := w.config.Credentials()
 	queue := tcqueue.New(credentials, w.config.RootURL)
@@ -656,12 +806,14 @@ func (w *Worker) RunTask(ctx context.Context, slot int, claim *tcqueue.TaskClaim
 	var exitErr error = exception.InternalError(fmt.Errorf("never finished"))
 	logUrl, liveLog := w.livelog.Allocate()
 	liveLogr := genericr.New(func(e genericr.Entry) {
-		fmt.Fprintln(liveLog, e.String())
+		fmt.Fprintf(liveLog, "%s\n", fancyLog(e))
 	})
 	defer func() {
-		var err error = exitErr
+		err := exitErr
 		if err != nil {
-			liveLogr.Error(err, "task failed")
+			liveLogr.Error(err, "Task failed")
+		} else {
+			liveLogr.Info(aurora.Green("Task completed").String())
 		}
 
 		liveLog.Close()
@@ -686,7 +838,7 @@ func (w *Worker) RunTask(ctx context.Context, slot int, claim *tcqueue.TaskClaim
 		return
 	}()
 
-	liveLogr.Info("Starting task on multistage-docker-worker")
+	liveLogr.Info(aurora.Green("Starting task on multistage-docker-worker").String())
 
 	err := createRedirectArtifact(queue, claim, liveLogName, logUrl, "text/plain", time.Time(claim.Task.Expires))
 	if err != nil {
