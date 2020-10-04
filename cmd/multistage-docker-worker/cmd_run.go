@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"github.com/docker/docker/client"
+	config2 "github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/config"
+	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/cri"
 	"io/ioutil"
 
 	"github.com/ghodss/yaml"
@@ -15,7 +17,7 @@ type Run struct {
 
 func (r *Run) Run(c *commandContext) error {
 	// Load config
-	config := worker.DefaultConfig
+	config := config2.DefaultConfig
 	if err := config.ParseEnv(); err != nil {
 		return err
 	}
@@ -37,7 +39,13 @@ func (r *Run) Run(c *commandContext) error {
 		return err
 	}
 
-	w, err := worker.NewWorker(c.Logger, &config, docker)
+	dockerCRI := &cri.Docker{
+		Client: docker,
+	}
+
+	dind := cri.NewDockerInDockerSandbox(dockerCRI, config.DindImage)
+
+	w, err := worker.NewWorker(c.Logger, &config, dind)
 	if err != nil {
 		return err
 	}

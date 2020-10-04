@@ -3,17 +3,17 @@ package livelog
 import (
 	"context"
 	"fmt"
-	"github.com/go-logr/logr"
-	"github.com/taskcluster/taskcluster/v37/clients/client-go/tcauth"
-	"github.com/taskcluster/taskcluster/v37/tools/websocktunnel/util"
-	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/worker"
 	"net"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/go-logr/logr"
+	"github.com/taskcluster/taskcluster/v37/clients/client-go/tcauth"
 	"github.com/taskcluster/taskcluster/v37/tools/websocktunnel/client"
+	"github.com/taskcluster/taskcluster/v37/tools/websocktunnel/util"
+	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/config"
 	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/pubsubbuffer"
 )
 
@@ -23,7 +23,7 @@ type LiveLog struct {
 	server   *pubsubbuffer.Server
 }
 
-func New(log logr.Logger, config *worker.Config) (*LiveLog, error) {
+func New(log logr.Logger, config *config.Config) (*LiveLog, error) {
 	url, listener, err := createListener(log, config)
 	if err != nil {
 		return nil, err
@@ -72,7 +72,7 @@ func (l *LiveLog) Serve(ctx context.Context) error {
 	return err
 }
 
-func createWSTListener(log logr.Logger, config *worker.Config) (string, net.Listener, error) {
+func createWSTListener(log logr.Logger, config *config.Config) (string, net.Listener, error) {
 	credentials := config.Credentials()
 	auth := tcauth.New(credentials, config.RootURL)
 	wstClientID := fmt.Sprintf("%s.%s", config.WorkerGroup, config.WorkerID)
@@ -104,7 +104,7 @@ func createWSTListener(log logr.Logger, config *worker.Config) (string, net.List
 	return cl.URL(), cl, nil
 }
 
-func createListener(log logr.Logger, config *worker.Config) (url string, listener net.Listener, err error) {
+func createListener(log logr.Logger, config *config.Config) (url string, listener net.Listener, err error) {
 	if config.WSTServerURL != "" {
 		url, listener, err = createWSTListener(log, config)
 	} else {

@@ -6,10 +6,11 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v3"
-	"github.com/docker/docker/client"
 	"github.com/go-logr/logr"
 	tcclient "github.com/taskcluster/taskcluster/v37/clients/client-go"
 	"github.com/taskcluster/taskcluster/v37/clients/client-go/tcqueue"
+	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/config"
+	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/cri"
 	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/livelog"
 )
 
@@ -29,13 +30,13 @@ func taskCredentials(c *tcqueue.TaskCredentials) *tcclient.Credentials {
 }
 
 type Worker struct {
-	config  *Config
-	livelog *livelog.LiveLog
-	log     logr.Logger
-	docker  client.APIClient
+	config         *config.Config
+	livelog        *livelog.LiveLog
+	log            logr.Logger
+	sandboxFactory cri.SandboxFactory
 }
 
-func NewWorker(log logr.Logger, config *Config, docker client.APIClient) (*Worker, error) {
+func NewWorker(log logr.Logger, config *config.Config, factory cri.SandboxFactory) (*Worker, error) {
 	// Make tasks directory.
 	if info, err := os.Stat(config.TasksDir); (err != nil) || !info.IsDir() {
 		err = os.Mkdir(config.TasksDir, 0775)
@@ -50,10 +51,10 @@ func NewWorker(log logr.Logger, config *Config, docker client.APIClient) (*Worke
 	}
 
 	w := &Worker{
-		config:  config,
-		livelog: l,
-		log:     log,
-		docker:  docker,
+		config:         config,
+		livelog:        l,
+		log:            log,
+		sandboxFactory: factory,
 	}
 	return w, nil
 }

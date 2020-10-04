@@ -1,4 +1,4 @@
-package worker
+package log
 
 import (
 	"bufio"
@@ -13,7 +13,7 @@ import (
 	"github.com/wojas/genericr"
 )
 
-func copyToLog(r io.Reader, log logr.Logger) error {
+func CopyToLogPrefix(log logr.Logger, r io.Reader, prefix string) error {
 	rd := bufio.NewReader(r)
 
 	for {
@@ -24,17 +24,50 @@ func copyToLog(r io.Reader, log logr.Logger) error {
 			return err
 		}
 
-		log.Info(string(line))
+		s := string(line)
+
+		if prefix != "" {
+			s = prefix + s
+		}
+
+		log.Info(s)
+	}
+}
+
+func CopyToLog(log logr.Logger, r io.Reader) error {
+	return CopyToLogPrefix(log, r, "")
+}
+
+func CopyToLogPrefixNoError(log logr.Logger, r io.Reader, prefix string) {
+	err := CopyToLogPrefix(log, r, prefix)
+	if err != nil {
+		log.Error(err, "Error copying log")
+	}
+}
+
+func CopyToLogNoError(log logr.Logger, r io.Reader) {
+	CopyToLogPrefixNoError(log, r, "")
+}
+
+func LogClose(log logr.Logger, c io.Closer, msg string) {
+	err := c.Close()
+	if err != nil {
+		log.Error(err, msg)
 	}
 }
 
 func prettyValue(v interface{}) string {
+	if a, ok := v.([]string); ok {
+		by, _ := json.Marshal(&a)
+		return string(by)
+	}
+
 	s := fmt.Sprintf("%v", v)
 	by, _ := json.Marshal(&s)
 	return string(by)
 }
 
-func fancyLog(e genericr.Entry)  string {
+func FancyLog(e genericr.Entry)  string {
 	now := time.Now().UTC().Format(time.RFC3339)[:20]
 	buf := bytes.NewBuffer(make([]byte, 0, 160))
 	buf.WriteString(now)

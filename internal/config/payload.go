@@ -1,4 +1,4 @@
-package worker
+package config
 
 // ValueFromSecret is used to insert secret values.
 type ValueFromSecret struct {

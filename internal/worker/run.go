@@ -1,30 +1,24 @@
 package worker
 
 import (
-	"archive/tar"
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"time"
 
-	"github.com/cenkalti/backoff/v3"
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
 	"github.com/go-logr/logr"
 	"github.com/logrusorgru/aurora/v3"
 	"github.com/taskcluster/taskcluster/v37/clients/client-go/tcqueue"
 	"github.com/taskcluster/taskcluster/v37/clients/client-go/tcsecrets"
 	"github.com/tidwall/gjson"
+	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/config"
+	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/cri"
 	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/exception"
+	lg "github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/log"
 	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/pubsubbuffer"
 	"github.com/wojas/genericr"
 )
@@ -50,194 +44,28 @@ func (w *Worker) uploadLog(log logr.Logger, queue *tcqueue.Queue, claim *tcqueue
 	}
 }
 
-func tlsConfigFromTar(log logr.Logger, r io.Reader) (*tls.Config, error) {
-	certPool, err := x509.SystemCertPool()
-	if err != nil {
-		certPool = x509.NewCertPool()
-	}
-
-	config := tls.Config{
-		RootCAs: certPool,
-	}
-
-	var cert []byte
-	var key []byte
-
-	tr := tar.NewReader(r)
-	for {
-		hdr, err := tr.Next()
-		if err == io.EOF {
-			return &config, nil
-		} else if err != nil {
-			return nil, err
-		}
-
-		if hdr.FileInfo().IsDir() {
-			continue
-		}
-
-		fileContent, err := ioutil.ReadAll(tr)
-		if err != nil {
-			return nil, err
-		}
-
-		switch hdr.Name {
-		case "client/cert.pem":
-			cert = fileContent
-
-		case "client/key.pem":
-			key = fileContent
-
-		case "client/ca.pem":
-			certPool.AppendCertsFromPEM(fileContent)
-
-		case "client/openssl.cnf":
-		case "client/csr.pem":
-
-		default:
-			log.Info("unexpected file", "file", hdr.Name)
-		}
-
-		if cert != nil && key != nil {
-			parsedCert, err := tls.X509KeyPair(cert, key)
-			if err != nil {
-				return nil, err
-			}
-			config.Certificates = append(config.Certificates, parsedCert)
-			cert = nil
-			key = nil
-		}
-	}
-}
-
-func cleanupContainer(log logr.Logger, cl client.APIClient, id string) {
+func cleanupContainer(log logr.Logger, container cri.Container) {
 	ctx := context.Background()
-	err := cl.ContainerRemove(ctx, id, types.ContainerRemoveOptions{
-		RemoveVolumes: true,
-		Force:         true,
-	})
+	err := container.Remove(ctx)
 	if err != nil {
-		log.Error(err, "failed to remove proxy container")
+		log.Error(err, "failed to remove container", "container", container.ID())
 	}
 }
 
-func (w *Worker) startDind(ctx context.Context, log logr.Logger, claim *tcqueue.TaskClaim, dir, workspaceDir string) (client.APIClient, string, error) {
-	var cancelCtx context.CancelFunc
-	ctx, cancelCtx = context.WithCancel(ctx)
-	defer cancelCtx()
-
-	dockerName := fmt.Sprintf("taskcluster_%s_%d", claim.Status.TaskID, claim.RunID)
-	certPath := filepath.Join(dir, "certs")
-	if err := os.Mkdir(certPath, 0775); err != nil {
-		return nil, "", exception.InternalError(fmt.Errorf("error creating certs dir: %w", err))
-	}
-
-	config := &container.Config{
-		Image: w.config.DindImage,
-		Env: []string{
-			"DOCKER_TLS_CERTDIR=/certs",
-		},
-		Volumes: map[string]struct{}{
-			"/var/lib/docker": struct{}{},
-			"/certs":          struct{}{},
-		},
-	}
-
-	hostConfig := &container.HostConfig{
-		Privileged: true,
-	}
-
-	dindContainer, err := w.docker.ContainerCreate(ctx, config, hostConfig, nil, dockerName)
-	wasClean := false
-	defer func() {
-		if !wasClean {
-			cleanupContainer(log, w.docker, dindContainer.ID)
-		}
-	}()
-
-	err = w.docker.ContainerStart(ctx, dindContainer.ID, types.ContainerStartOptions{})
-	if err != nil {
-		return nil, "", exception.InternalError(fmt.Errorf("failed to start dind: %w", err))
-	}
-
-	dindInspect, err := w.docker.ContainerInspect(ctx, dindContainer.ID)
-	if err != nil {
-		return nil, "", exception.InternalError(fmt.Errorf("failed to fetch dind info: %w", err))
-	}
-
-	// Connect to DinD
-	transport := http.Transport{TLSClientConfig: &tls.Config{}}
-	httpClient := http.Client{Transport: &transport}
-
-	dndHost := fmt.Sprintf("tcp://%s:2376", dindInspect.NetworkSettings.IPAddress)
-	dindClient, err := client.NewClient(dndHost, client.DefaultVersion, &httpClient, nil)
-	if err != nil {
-		return nil, "", exception.InternalError(fmt.Errorf("failed to connect to dind: %w", err))
-	}
-
-	// Wait for DinD to be ready.
-	bo := backoff.NewExponentialBackOff()
-	bo.MaxElapsedTime = time.Second * 30
-	err = backoff.Retry(func() error {
-		_, err := dindClient.Info(ctx)
-		if client.IsErrConnectionFailed(err) {
-			return exception.InternalError(err)
-		}
-
-		return nil
-	}, bo)
-	if err != nil {
-		return nil, "", err
-	}
-
-	rd, _, err := w.docker.CopyFromContainer(ctx, dindContainer.ID, "/certs/client")
-	if err != nil {
-		return nil, "", exception.InternalError(fmt.Errorf("failed to fetch dind tls: %w", err))
-	}
-
-	tlsConfig, err := tlsConfigFromTar(log, rd)
-	rd.Close()
-	if err != nil {
-		return nil, "", exception.InternalError(fmt.Errorf("failed to configure dind tls: %w", err))
-	}
-
-	transport.TLSClientConfig = tlsConfig
-
-	info, err := dindClient.Info(ctx)
-	if err != nil {
-		return nil, "", exception.InternalError(fmt.Errorf("failed to fetch docker info: %w", err))
-	}
-	log.Info("Connected to docker",
-		"version", info.ServerVersion)
-
-	wasClean = true
-	return dindClient, dindContainer.ID, nil
-}
-
-func watchContainer(ctx context.Context, log logr.Logger, cl client.APIClient, id string, ch chan<- error) {
+func watchContainer(ctx context.Context, log logr.Logger, container cri.Container, ch chan<- error) {
 	var err error
 	defer func() {
 		ch <- err
 	}()
 
-	err = dockerLogs(ctx, log, cl, id)
-	if err != nil {
-		return
-	}
-
-	resp, err := cl.ContainerInspect(ctx, id)
-	if err != nil {
-		return
-	}
-
-	if resp.State.Running {
-		panic(fmt.Errorf("container was still running"))
-	}
-
-	log.Info("exited with code: %d\n", resp.State.ExitCode)
+	rd, wr := io.Pipe()
+	defer lg.LogClose(log, wr, "Failed to close container log pipe")
+	go lg.CopyToLogNoError(log, rd)
+	exitCode, err := container.Run(ctx, wr, wr)
+	log.Info("exited with code: %d\n", exitCode)
 }
 
-func (w *Worker) resolveValueFrom(ctx context.Context, claim *tcqueue.TaskClaim, valueFrom *ValueFrom) (result string, err error) {
+func (w *Worker) resolveValueFrom(ctx context.Context, claim *tcqueue.TaskClaim, valueFrom *config.ValueFrom) (result string, err error) {
 	if vfs := valueFrom.ValueFromSecret; vfs != nil {
 		credentials := taskCredentials(&claim.Credentials)
 		secrets := tcsecrets.New(credentials, w.config.RootURL)
@@ -256,7 +84,7 @@ func (w *Worker) resolveValueFrom(ctx context.Context, claim *tcqueue.TaskClaim,
 	return
 }
 
-func (w *Worker) runStep(ctx context.Context, log logr.Logger, wr io.Writer, cl client.APIClient, claim *tcqueue.TaskClaim, rootContainer string, stepIdx int, step *Step, deps []<-chan error, ch chan<- error) {
+func (w *Worker) runStep(ctx context.Context, log logr.Logger, sandbox cri.CRI, claim *tcqueue.TaskClaim, rootContainer cri.Container, stepIdx int, step *config.Step, deps []<-chan error, ch chan<- error) {
 	pullLog := log.WithName(fmt.Sprintf("pull %d", stepIdx))
 	log = log.WithName(fmt.Sprintf("step %d", stepIdx))
 
@@ -267,7 +95,7 @@ func (w *Worker) runStep(ctx context.Context, log logr.Logger, wr io.Writer, cl 
 	}()
 
 	// Pull the image.
-	err = dockerPull(ctx, pullLog, cl, step.Image)
+	err = sandbox.ImagePull(ctx, pullLog, step.Image)
 	if err != nil {
 		return
 	}
@@ -280,8 +108,8 @@ func (w *Worker) runStep(ctx context.Context, log logr.Logger, wr io.Writer, cl 
 		}
 	}
 
-	env := []string{
-		"TASKCLUSTER_PROXY_URL=http://localhost:8080/",
+	env := map[string]string{
+		"TASKCLUSTER_PROXY_URL": "http://localhost:8080/",
 	}
 
 	for idx := range step.Env {
@@ -296,54 +124,49 @@ func (w *Worker) runStep(ctx context.Context, log logr.Logger, wr io.Writer, cl 
 			value = e.Value
 		}
 
-		env = append(env, fmt.Sprintf("%s=%s", e.Name, value))
+		env[e.Name] = value
 	}
 
 	containerName := fmt.Sprintf("step-%d", stepIdx)
-	container, err := cl.ContainerCreate(ctx, &container.Config{
+	container, err := sandbox.ContainerCreate(ctx, &cri.ContainerSpec{
+		Name:       containerName,
 		Image:      step.Image,
 		Entrypoint: step.Command,
-		Cmd:        step.Args,
+		Command:    step.Args,
 		Env:        env,
 		WorkingDir: "/workspace",
-	}, &container.HostConfig{
 		Binds: []string{
 			"/var/run/docker.sock:/var/run/docker.sock",
 		},
-		NetworkMode: container.NetworkMode(fmt.Sprintf("container:%s", rootContainer)),
-		VolumesFrom: []string{rootContainer},
-	}, nil, containerName)
+		PodWith: rootContainer,
+	})
 	if err != nil {
 		return
 	}
-	defer cleanupContainer(log, cl, container.ID)
+	defer cleanupContainer(log, container)
 
 	log.Info(aurora.Green("Starting step").String(), "command", step.Command, "args", step.Args)
 
-	err = cl.ContainerStart(ctx, container.ID, types.ContainerStartOptions{})
-	if err != nil {
-		return
-	}
+	outRead, outWrite := io.Pipe()
+	errRead, errWrite := io.Pipe()
 
-	err = dockerLogs(ctx, log, cl, container.ID)
-	if err != nil {
-		return
-	}
+	defer lg.LogClose(log, outWrite, "Failed to close stdout")
+	defer lg.LogClose(log, errWrite, "Failed to close stderr")
 
-	resp, err := cl.ContainerInspect(ctx, container.ID)
-	if err != nil {
-		return
-	}
+	go lg.CopyToLogNoError(log, outRead)
+	go lg.CopyToLogPrefixNoError(log, errRead, "\033[31m")
 
-	if resp.State.ExitCode != 0 {
-		err = fmt.Errorf("exited with code %d", resp.State.ExitCode)
+	var exitCode int
+	exitCode, err = container.Run(ctx, outWrite, errWrite)
+	if exitCode != 0 {
+		err = fmt.Errorf("exited with code %d", exitCode)
 	}
 
 	log.Info(aurora.Green("Step completed").String())
 }
 
 func (w *Worker) runTaskLogic(ctx context.Context, syslog, log logr.Logger, slot int, claim *tcqueue.TaskClaim, wr io.Writer) error {
-	var payload Payload
+	var payload config.Payload
 	err := json.Unmarshal(claim.Task.Payload, &payload)
 	if err != nil {
 		return exception.MalformedPayload(err)
@@ -363,62 +186,52 @@ func (w *Worker) runTaskLogic(ctx context.Context, syslog, log logr.Logger, slot
 		return exception.InternalError(fmt.Errorf("failed to create workspace: %w", err))
 	}
 
-	// Pull DinD
-	err = dockerPull(ctx, syslog, w.docker, w.config.DindImage)
+	// Create Sandbox
+	sandboxName := fmt.Sprintf("taskcluster_%s_%d", claim.Status.TaskID, claim.RunID)
+	sandbox, err := w.sandboxFactory.SandboxCreate(ctx, syslog, sandboxName)
 	if err != nil {
-		return exception.InternalError(fmt.Errorf("failed to pull dind: %w", err))
+		return exception.InternalError(fmt.Errorf("failed to start sandbox: %w", err))
 	}
-
-	// Start DinD
-	dindClient, dindID, err := w.startDind(ctx, log, claim, dir, workspaceDir)
-	if err != nil {
-		return err
-	}
-	defer cleanupContainer(log, w.docker, dindID)
+	defer lg.LogClose(log, sandbox, "Error cleaning up sandbox")
 
 	// Start Proxy
-	err = dockerPull(ctx, syslog, dindClient, w.config.TaskclusterProxyImage)
+	err = sandbox.ImagePull(ctx, syslog, w.config.TaskclusterProxyImage)
 	if err != nil {
 		return exception.InternalError(fmt.Errorf("failed to pull taskcluster-oroxy: %w", err))
 	}
 
-	proxyContainer, err := dindClient.ContainerCreate(ctx, &container.Config{
+	proxyContainer, err := sandbox.ContainerCreate(ctx, &cri.ContainerSpec{
+		Name:  "taskcluster-proxy",
 		Image: w.config.TaskclusterProxyImage,
 		Volumes: map[string]struct{}{
 			"/workspace": struct{}{},
-			"/home": struct{}{},
-			"/root": struct{}{},
+			"/home":      struct{}{},
+			"/root":      struct{}{},
 		},
 		Entrypoint: []string{"/taskcluster-proxy"},
-		Env: []string{
-			fmt.Sprintf("TASKCLUSTER_ROOT_URL=%s", w.config.RootURL),
-			fmt.Sprintf("TASKCLUSTER_CLIENT_ID=%s", claim.Credentials.ClientID),
-			fmt.Sprintf("TASKCLUSTER_ACCESS_TOKEN=%s", claim.Credentials.AccessToken),
-			fmt.Sprintf("TASKCLUSTER_CERTIFICATE=%s", claim.Credentials.Certificate),
+		Env: map[string]string{
+			"TASKCLUSTER_ROOT_URL":     w.config.RootURL,
+			"TASKCLUSTER_CLIENT_ID":    claim.Credentials.ClientID,
+			"TASKCLUSTER_ACCESS_TOKEN": claim.Credentials.AccessToken,
+			"TASKCLUSTER_CERTIFICATE":  claim.Credentials.Certificate,
 		},
-	}, nil, nil, "taskcluster-proxy")
+	})
 	if err != nil {
 		return exception.InternalError(fmt.Errorf("failed to create taskcluster-proxy: %w", err))
 	}
-	defer cleanupContainer(log, dindClient, proxyContainer.ID)
-
-	err = dindClient.ContainerStart(ctx, proxyContainer.ID, types.ContainerStartOptions{})
-	if err != nil {
-		return exception.InternalError(fmt.Errorf("failed to start proxy: %w", err))
-	}
+	defer cleanupContainer(log, proxyContainer)
 
 	startCh := make(chan error, 1)
 	nextCh := startCh
-	exitCh := make(chan error, 2)
-	go watchContainer(ctx, syslog, w.docker, dindID, exitCh)
-	go watchContainer(ctx, syslog, dindClient, proxyContainer.ID, exitCh)
+	exitCh := make(chan error, 1)
+	go watchContainer(ctx, syslog, proxyContainer, exitCh)
 
 	// Configure containers
 	for idx := range payload.Steps {
 		step := &payload.Steps[idx]
 		stepCh := make(chan error, 1)
 
-		go w.runStep(ctx, log, wr, dindClient, claim, proxyContainer.ID, idx, step, []<-chan error{nextCh}, stepCh)
+		go w.runStep(ctx, log, sandbox, claim, proxyContainer, idx, step, []<-chan error{nextCh}, stepCh)
 		nextCh = stepCh
 	}
 
@@ -453,7 +266,7 @@ func (w *Worker) RunTask(ctx context.Context, slot int, claim *tcqueue.TaskClaim
 	var exitErr error = exception.InternalError(fmt.Errorf("never finished"))
 	logUrl, liveLog := w.livelog.Allocate()
 	liveLogr := genericr.New(func(e genericr.Entry) {
-		fmt.Fprintf(liveLog, "%s\n", fancyLog(e))
+		fmt.Fprintf(liveLog, "%s\n", lg.FancyLog(e))
 	})
 	defer func() {
 		err := exitErr

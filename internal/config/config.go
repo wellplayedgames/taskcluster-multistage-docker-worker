@@ -1,4 +1,4 @@
-package worker
+package config
 
 import (
 	"github.com/taskcluster/taskcluster/v37/clients/client-go"
