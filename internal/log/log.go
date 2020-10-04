@@ -13,6 +13,7 @@ import (
 	"github.com/wojas/genericr"
 )
 
+// CopyToLogPrefix splits a reader by newlines and emits log entries with a prefix.
 func CopyToLogPrefix(log logr.Logger, r io.Reader, prefix string) error {
 	rd := bufio.NewReader(r)
 
@@ -34,10 +35,12 @@ func CopyToLogPrefix(log logr.Logger, r io.Reader, prefix string) error {
 	}
 }
 
+// CopyToLog splits a reader by newlines and emits log entries.
 func CopyToLog(log logr.Logger, r io.Reader) error {
 	return CopyToLogPrefix(log, r, "")
 }
 
+// CopyToLogPrefixNoError emits log entries from a reader with a prefix. Any error during read will be logged.
 func CopyToLogPrefixNoError(log logr.Logger, r io.Reader, prefix string) {
 	err := CopyToLogPrefix(log, r, prefix)
 	if err != nil {
@@ -45,10 +48,12 @@ func CopyToLogPrefixNoError(log logr.Logger, r io.Reader, prefix string) {
 	}
 }
 
+// CopyToLogNoError emits log entries from a reader. Any error during read will be logged.
 func CopyToLogNoError(log logr.Logger, r io.Reader) {
 	CopyToLogPrefixNoError(log, r, "")
 }
 
+// LogClose closes a Closer and logs any errors which occur.
 func LogClose(log logr.Logger, c io.Closer, msg string) {
 	err := c.Close()
 	if err != nil {
@@ -67,6 +72,8 @@ func prettyValue(v interface{}) string {
 	return string(by)
 }
 
+// FancyLog is a logging function for genericr which prints a format which is
+// nice to use for CI output.
 func FancyLog(e genericr.Entry)  string {
 	now := time.Now().UTC().Format(time.RFC3339)[:20]
 	buf := bytes.NewBuffer(make([]byte, 0, 160))

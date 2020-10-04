@@ -84,6 +84,7 @@ type dindFactory struct {
 
 var _ SandboxFactory = (*dindFactory)(nil)
 
+// NewDockerInDockerSandbox creates a SandboxFactory which uses an existing CRI to run docker-in-docker.
 func NewDockerInDockerSandbox(cri CRI, image string) SandboxFactory {
 	d := &dindFactory{
 		CRI:   cri,

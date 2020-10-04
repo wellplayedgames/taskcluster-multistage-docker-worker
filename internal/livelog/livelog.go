@@ -17,12 +17,14 @@ import (
 	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/pubsubbuffer"
 )
 
+// LiveLog is a listener which uses HTTP streaming to deliver up-to-the-second build logs.
 type LiveLog struct {
 	baseURL  string
 	listener net.Listener
 	server   *pubsubbuffer.Server
 }
 
+// New creates a new LiveLog, given the configuration and a diagnostic logger.
 func New(log logr.Logger, config *config.Config) (*LiveLog, error) {
 	url, listener, err := createListener(log, config)
 	if err != nil {
@@ -43,16 +45,20 @@ func New(log logr.Logger, config *config.Config) (*LiveLog, error) {
 	return l, nil
 }
 
+// BaseURL returns the URL at which the LiveLogs will be hosted.
 func (l *LiveLog) BaseURL() string {
 	return l.baseURL
 }
 
+// Allocate creates a new live log and returns the URL to access it and the
+// writer to populate the contents.
 func (l *LiveLog) Allocate() (string, pubsubbuffer.WriteSubscribeCloser) {
 	path, w := l.server.Allocate()
 	url := l.baseURL + path
 	return url, w
 }
 
+// Serve creates the HTTP server for the LiveLogs and runs it.
 func (l *LiveLog) Serve(ctx context.Context) error {
 	server := &http.Server{
 		Handler: l.server,

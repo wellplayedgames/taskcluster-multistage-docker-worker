@@ -41,12 +41,14 @@ func canonicalImage(image string) string {
 	}
 }
 
+// Docker is a Docker CRI implementation.
 type Docker struct {
 	Client client.APIClient
 }
 
 var _ CRI = (*Docker)(nil)
 
+// ImagePull fetches a remote image into the local Docker instance.
 func (d *Docker) ImagePull(ctx context.Context, log logr.Logger, image string) (err error) {
 	r, err := d.Client.ImagePull(ctx, canonicalImage(image), types.ImagePullOptions{})
 	if err != nil {
@@ -90,6 +92,7 @@ func (d *Docker) ImagePull(ctx context.Context, log logr.Logger, image string) (
 	}
 }
 
+// ContainerCreate creates a new Docker container.
 func (d *Docker) ContainerCreate(ctx context.Context, spec *ContainerSpec) (Container, error) {
 	envList := make([]string, 0, len(spec.Env))
 

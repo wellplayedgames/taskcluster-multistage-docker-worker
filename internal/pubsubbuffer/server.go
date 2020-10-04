@@ -17,6 +17,7 @@ type Server struct {
 
 var _ http.Handler = (*Server)(nil)
 
+// NewServer creates a new pubsubbuffer server.
 func NewServer() *Server {
 	return &Server{
 		buffers: map[string]*Buffer{},

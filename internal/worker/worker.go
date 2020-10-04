@@ -29,6 +29,7 @@ func taskCredentials(c *tcqueue.TaskCredentials) *tcclient.Credentials {
 	}
 }
 
+// Worker is the implementation of the worker lifecycle.
 type Worker struct {
 	config         *config.Config
 	livelog        *livelog.LiveLog
@@ -36,6 +37,7 @@ type Worker struct {
 	sandboxFactory cri.SandboxFactory
 }
 
+// NewWorker creates a new worker given the configuration and sandbox factory.
 func NewWorker(log logr.Logger, config *config.Config, factory cri.SandboxFactory) (*Worker, error) {
 	// Make tasks directory.
 	if info, err := os.Stat(config.TasksDir); (err != nil) || !info.IsDir() {
