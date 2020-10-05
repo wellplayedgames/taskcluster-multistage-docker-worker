@@ -1,0 +1,6 @@
+provider:
+  providerType: google
+worker:
+  implementation: generic-worker
+  path: /multistage-docker-worker
+  configPath: /generic-worker-config.yml
