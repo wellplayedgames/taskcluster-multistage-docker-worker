@@ -2,61 +2,64 @@ version: 1
 policy:
   pullRequests: public
 tasks:
-  $match:
-    (tasks_for == "github-push"):
-      taskId:
-        $eval: as_slugid("pr_task")
-      created: { $fromNow: '' }
-      deadline: { $fromNow: '1 day' }
-      expires: { $fromNow: '10 days' }
-      provisionerId: shared
-      workerType: multistage-docker
-      scopes:
-        - 'secrets:get:shared/github'
-        - 'secrets:get:shared/cloudbuild-service-account'
-      routes:
-        - notify.slack-channel.C9Z43K24F.on-any
-      payload:
-        steps:
-        - image: bitnami/git
-          command:
-          - /bin/bash
-          args:
-          - '-c'
-          - >-
-            git clone
-            https://robot-gunslinger:$GITHUB_TOKEN@github.com/wellplayedgames/taskcluster-multistage-docker-worker
-            .
-            && git checkout "${event.after}"
-          env:
-          - name: GITHUB_TOKEN
-            valueFrom:
-              secret:
-                secretName: shared/github
-                path: token
-        - image: docker
-          args:
-          - build
-          - .
-          - '-t'
-          - gcr.io/wpg-internal/taskcluster-multistage-docker-worker
-        - image: docker
-          command:
-          - /bin/sh
-          args:
-          - '-c'
-          - >-
-            echo "$GOOGLE_SERVICE_ACCOUNT" | docker login -u _json_key
-            --password-stdin https://gcr.io && docker push
-            gcr.io/wpg-internal/taskcluster-multistage-docker-worker
-          env:
-          - name: GOOGLE_SERVICE_ACCOUNT
-            valueFrom:
-              secret:
-                secretName: shared/cloudbuild-service-account
-                path: service-account\.json
-      metadata:
-        name: 'Build multistage-docker-worker'
-        description: 'Build & push multistage-docker-worker'
-        owner: '${event.sender.login}@users.noreply.github.com'
-        source: '${event.repository.url}'
+  $flatten:
+    $match:
+      (tasks_for == "github-push"):
+      - $if: event.ref == "refs/heads/main"
+        then:
+          taskId:
+            $eval: as_slugid("pr_task")
+          created: { $fromNow: '' }
+          deadline: { $fromNow: '1 day' }
+          expires: { $fromNow: '10 days' }
+          provisionerId: shared
+          workerType: multistage-docker
+          scopes:
+            - 'secrets:get:shared/github'
+            - 'secrets:get:shared/cloudbuild-service-account'
+          routes:
+            - notify.slack-channel.C9Z43K24F.on-any
+          payload:
+            steps:
+            - image: bitnami/git
+              command:
+              - /bin/bash
+              args:
+              - '-c'
+              - >-
+                git clone
+                https://robot-gunslinger:$GITHUB_TOKEN@github.com/wellplayedgames/taskcluster-multistage-docker-worker
+                .
+                && git checkout "${event.after}"
+              env:
+              - name: GITHUB_TOKEN
+                valueFrom:
+                  secret:
+                    secretName: shared/github
+                    path: token
+            - image: docker
+              args:
+              - build
+              - .
+              - '-t'
+              - gcr.io/wpg-internal/taskcluster-multistage-docker-worker
+            - image: docker
+              command:
+              - /bin/sh
+              args:
+              - '-c'
+              - >-
+                echo "$GOOGLE_SERVICE_ACCOUNT" | docker login -u _json_key
+                --password-stdin https://gcr.io && docker push
+                gcr.io/wpg-internal/taskcluster-multistage-docker-worker
+              env:
+              - name: GOOGLE_SERVICE_ACCOUNT
+                valueFrom:
+                  secret:
+                    secretName: shared/cloudbuild-service-account
+                    path: service-account\.json
+          metadata:
+            name: 'Build multistage-docker-worker'
+            description: 'Build & push multistage-docker-worker'
+            owner: '${event.sender.login}@users.noreply.github.com'
+            source: '${event.repository.url}'
