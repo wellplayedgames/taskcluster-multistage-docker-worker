@@ -60,7 +60,7 @@ func watchContainer(ctx context.Context, log logr.Logger, container cri.Containe
 	defer lg.LogClose(log, wr, "Failed to close container log pipe")
 	go lg.CopyToLogNoError(log, rd)
 	exitCode, err := container.Run(ctx, wr, wr)
-	log.Info("exited with code: %d\n", exitCode)
+	log.Info("Container exited", "exitCode", exitCode)
 }
 
 func (w *Worker) resolveValueFrom(ctx context.Context, claim *tcqueue.TaskClaim, valueFrom *config.ValueFrom) (result string, err error) {
