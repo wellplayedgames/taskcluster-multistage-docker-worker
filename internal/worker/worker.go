@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/cenkalti/backoff/v3"
@@ -34,10 +35,12 @@ type Worker struct {
 	livelog        *livelog.LiveLog
 	log            logr.Logger
 	sandboxFactory cri.SandboxFactory
+	stopCh         <-chan bool
+	shutdown       func() error
 }
 
 // NewWorker creates a new worker given the configuration and sandbox factory.
-func NewWorker(log logr.Logger, config *config.Config, factory cri.SandboxFactory) (*Worker, error) {
+func NewWorker(log logr.Logger, config *config.Config, factory cri.SandboxFactory, stopCh <-chan bool, shutdown func() error) (*Worker, error) {
 	l, err := livelog.New(log, config)
 	if err != nil {
 		return nil, err
@@ -48,6 +51,8 @@ func NewWorker(log logr.Logger, config *config.Config, factory cri.SandboxFactor
 		livelog:        l,
 		log:            log,
 		sandboxFactory: factory,
+		stopCh:         stopCh,
+		shutdown:       shutdown,
 	}
 	return w, nil
 }
@@ -88,34 +93,45 @@ func (w *Worker) Run(ctx context.Context, gracefulStop <-chan struct{}) error {
 
 	// A background goroutine for requesting work.
 	go func() {
-		safeQueue := queue
-		queue.Context = safeCtx
+		defer close(workRes)
+
+		safeQueue := *queue
+		safeQueue.Context = nil
 		exponentialBackoff := backoff.NewExponentialBackOff()
 		exponentialBackoff.MaxElapsedTime = 0
 		bo := backoff.WithContext(exponentialBackoff, safeCtx)
 
 		for req := range workReq {
-			backoff.Retry(func() error {
+			err := backoff.Retry(func() error {
 				for {
 					resp, err := safeQueue.ClaimWork(config.ProvisionerID, config.WorkerType, &tcqueue.ClaimWorkRequest{
 						Tasks:       int64(req),
 						WorkerGroup: config.WorkerType,
 						WorkerID:    config.WorkerID,
 					})
-					if err != nil {
+					if err == context.Canceled {
+						return backoff.Permanent(err)
+					} else if err != nil {
 						w.log.Error(err, "error claiming work")
 						return err
-					} else if len(resp.Tasks) > 0 {
-						workRes <- resp
-						return nil
 					}
+
+					workRes <- resp
+					return nil
 				}
 			}, bo)
+			if err != nil {
+				w.log.Error(err, "error running work claim")
+				return
+			}
 		}
 	}()
 
+	now := time.Now()
 	workReq <- config.ConcurrentTasks
 	isFull := false
+	idleSince := &now
+	isShuttingDown := false
 
 	for {
 		select {
@@ -124,6 +140,13 @@ func (w *Worker) Run(ctx context.Context, gracefulStop <-chan struct{}) error {
 			if len(freeSlots) == config.ConcurrentTasks {
 				return ctx.Err()
 			}
+
+		case finishTasks := <-w.stopCh:
+			if !finishTasks {
+				return fmt.Errorf("immediate graceful shutdown")
+			}
+
+			isShuttingDown = true
 
 		// Run finished.
 		case idx := <-completedTasks:
@@ -137,12 +160,37 @@ func (w *Worker) Run(ctx context.Context, gracefulStop <-chan struct{}) error {
 				workReq <- 1
 			}
 
+			if isShuttingDown && (len(freeSlots) == config.ConcurrentTasks) {
+				return nil
+			}
+
 		// New work claimed.
 		case resp := <-workRes:
+			if resp == nil {
+				if len(freeSlots) == config.ConcurrentTasks {
+					return nil
+				}
+
+				continue
+			}
+
+			now := time.Now()
+			if config.ShutdownOnIdleSeconds != nil && len(resp.Tasks) == 0 && idleSince != nil {
+				if now.Sub(*idleSince) > time.Duration(*config.ShutdownOnIdleSeconds) * time.Second {
+					w.log.Info("Idle, shutting down")
+					return w.shutdown()
+				}
+			}
+
+			if isShuttingDown {
+				continue
+			}
+
 			for idx := range resp.Tasks {
 				slot := freeSlots[len(freeSlots)-1]
 				freeSlots = freeSlots[:len(freeSlots)-1]
 				claim := &resp.Tasks[idx]
+				idleSince = &now
 
 				go func() {
 					defer func() {

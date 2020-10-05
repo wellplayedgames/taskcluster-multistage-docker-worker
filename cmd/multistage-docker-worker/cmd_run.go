@@ -2,22 +2,46 @@ package main
 
 import (
 	"fmt"
-	"github.com/docker/docker/client"
-	config2 "github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/config"
-	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/cri"
 	"io/ioutil"
+	"os"
 
+	"github.com/docker/docker/client"
 	"github.com/ghodss/yaml"
+	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/config"
+	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/cri"
+	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/log"
 	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/worker"
+	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/workerproto"
 )
 
 type Run struct {
-	Config string `help:"Path to a configuration file to load."`
+	Config           string `help:"Path to a configuration file to load."`
+	WithWorkerRunner bool   `help:"Use this flag to enable the worker protocol."`
 }
 
 func (r *Run) Run(c *commandContext) error {
+	logger := c.Logger
+	var gracefulShutdownCh <-chan bool
+	requestShutdown := func() error {
+		return fmt.Errorf("shutdown requested but not implemented")
+	}
+
+	// Configure worker-runner
+	if r.WithWorkerRunner {
+		communicator := workerproto.NewCommunicator(logger, true)
+
+		baseLogger := logger
+		remoteLog := workerproto.AddLogger(communicator, baseLogger)
+		logger = log.NewTee(baseLogger, remoteLog)
+
+		gracefulShutdownCh = workerproto.AddGracefulTermination(communicator)
+		requestShutdown = workerproto.AddRemoteShutdown(communicator)
+
+		go communicator.Run(os.Stdin, os.Stderr)
+	}
+
 	// Load config
-	config := config2.DefaultConfig
+	config := config.DefaultConfig
 	if err := config.ParseEnv(); err != nil {
 		return err
 	}
@@ -45,7 +69,7 @@ func (r *Run) Run(c *commandContext) error {
 
 	dind := cri.NewDockerInDockerSandbox(dockerCRI, config.DindImage)
 
-	w, err := worker.NewWorker(c.Logger, &config, dind)
+	w, err := worker.NewWorker(logger, &config, dind, gracefulShutdownCh, requestShutdown)
 	if err != nil {
 		return err
 	}

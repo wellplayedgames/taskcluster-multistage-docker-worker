@@ -17,11 +17,13 @@ type Config struct {
 	WorkerGroup   string `json:"workerGroup"`
 	WorkerID      string `json:"workerId"`
 
-	PublicIP         string  `json:"publicIp,omitempty"`
+	PublicIP string `json:"publicIp,omitempty"`
 
 	LiveLogPort     int    `json:"liveLogPort,omitempty"`
 	LiveLogCertPath string `json:"liveLogCertPath,omitempty"`
 	LiveLogKeyPath  string `json:"liveLogCertPath,omitempty"`
+
+	ShutdownOnIdleSeconds *int `json:"shutdownOnIdleSecs,omitempty"`
 
 	DindImage             string `json:"dindImage,omitempty"`
 	TaskclusterProxyImage string `json:"taskclusterProxyImage,omitempty"`

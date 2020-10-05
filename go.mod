@@ -13,6 +13,8 @@ require (
 	github.com/go-logr/logr v0.2.1
 	github.com/go-logr/zapr v0.2.0
 	github.com/logrusorgru/aurora/v3 v3.0.0
+	github.com/onsi/ginkgo v1.14.1
+	github.com/onsi/gomega v1.10.2
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/taskcluster/slugid-go v1.1.0
 	github.com/taskcluster/taskcluster/v37 v37.2.0
