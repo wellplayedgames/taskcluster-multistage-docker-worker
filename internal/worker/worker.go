@@ -18,7 +18,7 @@ const (
 	liveLogName    = "public/logs/live.log"
 	liveLogBacking = "public/logs/live-backing.log"
 
-	reclaimSafetyInterval = 30 * time.Second
+	reclaimSafetyInterval = 60 * time.Second
 )
 
 func taskCredentials(c *tcqueue.TaskCredentials) *tcclient.Credentials {
@@ -106,7 +106,7 @@ func (w *Worker) Run(ctx context.Context, gracefulStop <-chan struct{}) error {
 				for {
 					resp, err := safeQueue.ClaimWork(config.ProvisionerID, config.WorkerType, &tcqueue.ClaimWorkRequest{
 						Tasks:       int64(req),
-						WorkerGroup: config.WorkerType,
+						WorkerGroup: config.WorkerGroup,
 						WorkerID:    config.WorkerID,
 					})
 					if err == context.Canceled {
@@ -151,7 +151,14 @@ func (w *Worker) Run(ctx context.Context, gracefulStop <-chan struct{}) error {
 		// Run finished.
 		case idx := <-completedTasks:
 			freeSlots = append(freeSlots, idx)
-			if (ctx.Err() != nil) && (len(freeSlots) == config.ConcurrentTasks) {
+			isIdle := len(freeSlots) == config.ConcurrentTasks
+
+			if idleSince == nil && isIdle {
+				now := time.Now()
+				idleSince = &now
+			}
+
+			if (ctx.Err() != nil) && isIdle {
 				return ctx.Err()
 			}
 
@@ -190,7 +197,7 @@ func (w *Worker) Run(ctx context.Context, gracefulStop <-chan struct{}) error {
 				slot := freeSlots[len(freeSlots)-1]
 				freeSlots = freeSlots[:len(freeSlots)-1]
 				claim := &resp.Tasks[idx]
-				idleSince = &now
+				idleSince = nil
 
 				go func() {
 					defer func() {

@@ -240,10 +240,9 @@ func (w *Worker) RunTask(ctx context.Context, slot int, claim *tcqueue.TaskClaim
 	log.Info("Starting task run")
 	defer log.Info("Finished task run")
 
-	credentials := w.config.Credentials()
+	credentials := taskCredentials(&claim.Credentials)
 	queue := tcqueue.New(credentials, w.config.RootURL)
 	queue.Context = ctx
-	credentials = taskCredentials(&claim.Credentials)
 	runIdStr := strconv.FormatInt(claim.RunID, 10)
 	reclaimCh := time.After(time.Until(time.Time(claim.TakenUntil).Add(-reclaimSafetyInterval)))
 
