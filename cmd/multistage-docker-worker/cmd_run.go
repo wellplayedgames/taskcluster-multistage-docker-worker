@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 
+	dcfg "github.com/docker/cli/cli/config"
 	"github.com/docker/docker/client"
 	"github.com/ghodss/yaml"
 	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/config"
@@ -41,8 +42,8 @@ func (r *Run) Run(c *commandContext) error {
 	}
 
 	// Load config
-	config := config.DefaultConfig
-	if err := config.ParseEnv(); err != nil {
+	workerConfig := config.DefaultConfig
+	if err := workerConfig.ParseEnv(); err != nil {
 		return err
 	}
 
@@ -52,7 +53,7 @@ func (r *Run) Run(c *commandContext) error {
 			return fmt.Errorf("error reading config file: %w", err)
 		}
 
-		err = yaml.Unmarshal(contents, &config)
+		err = yaml.Unmarshal(contents, &workerConfig)
 		if err != nil {
 			return fmt.Errorf("error parsing config: %w", err)
 		}
@@ -63,13 +64,11 @@ func (r *Run) Run(c *commandContext) error {
 		return err
 	}
 
-	dockerCRI := &cri.Docker{
-		Client: docker,
-	}
+	dockerConfig := dcfg.LoadDefaultConfigFile(os.Stderr)
+	dockerCRI := cri.NewDocker(docker, dockerConfig)
+	dind := cri.NewDockerInDockerSandbox(dockerCRI, dockerConfig, workerConfig.DindImage)
 
-	dind := cri.NewDockerInDockerSandbox(dockerCRI, config.DindImage)
-
-	w, err := worker.NewWorker(logger, &config, dind, gracefulShutdownCh, requestShutdown)
+	w, err := worker.NewWorker(logger, &workerConfig, dind, gracefulShutdownCh, requestShutdown)
 	if err != nil {
 		return err
 	}

@@ -3,6 +3,7 @@ package cri
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -11,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/docker/cli/cli/config/configfile"
+	ctypes "github.com/docker/cli/cli/config/types"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
@@ -43,14 +46,44 @@ func canonicalImage(image string) string {
 
 // Docker is a Docker CRI implementation.
 type Docker struct {
-	Client client.APIClient
+	client client.APIClient
+	config *configfile.ConfigFile
 }
 
 var _ CRI = (*Docker)(nil)
 
+func NewDocker(client client.APIClient, config *configfile.ConfigFile) *Docker {
+	return &Docker{
+		client: client,
+		config: config,
+	}
+}
+
+func encodeAuthToBase64(authConfig ctypes.AuthConfig) (string, error) {
+	by, err := json.Marshal(authConfig)
+	if err != nil {
+		return "", err
+	}
+	return base64.URLEncoding.EncodeToString(by), nil
+}
+
 // ImagePull fetches a remote image into the local Docker instance.
 func (d *Docker) ImagePull(ctx context.Context, log logr.Logger, image string) (err error) {
-	r, err := d.Client.ImagePull(ctx, canonicalImage(image), types.ImagePullOptions{})
+	canonImage := canonicalImage(image)
+	imageParts := strings.SplitN(canonImage, "/", 2)
+	authConfig, err := d.config.GetAuthConfig(imageParts[0])
+	if err != nil {
+		return fmt.Errorf("error pulling %s: %w", image, err)
+	}
+
+	encodedAuth, err := encodeAuthToBase64(authConfig)
+	if err != nil {
+		return fmt.Errorf("error encoding auth: %w", err)
+	}
+
+	r, err := d.client.ImagePull(ctx, canonImage, types.ImagePullOptions{
+		RegistryAuth:  encodedAuth,
+	})
 	if err != nil {
 		return
 	}
@@ -121,13 +154,13 @@ func (d *Docker) ContainerCreate(ctx context.Context, spec *ContainerSpec) (Cont
 		hostConfig.VolumesFrom = []string{podID}
 	}
 
-	container, err := d.Client.ContainerCreate(ctx, config, hostConfig, nil, spec.Name)
+	container, err := d.client.ContainerCreate(ctx, config, hostConfig, nil, spec.Name)
 	if err != nil {
 		return nil, err
 	}
 
 	c := &dockerContainer{
-		client: d.Client,
+		client: d.client,
 		id: container.ID,
 	}
 	return c, nil

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v3"
+	"github.com/docker/cli/cli/config/configfile"
 	"github.com/docker/docker/client"
 	"github.com/go-logr/logr"
 	lg "github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/log"
@@ -79,15 +80,17 @@ func tlsConfigFromTar(log logr.Logger, r io.Reader) (*tls.Config, error) {
 
 type dindFactory struct {
 	CRI
+	config *configfile.ConfigFile
 	image string
 }
 
 var _ SandboxFactory = (*dindFactory)(nil)
 
 // NewDockerInDockerSandbox creates a SandboxFactory which uses an existing CRI to run docker-in-docker.
-func NewDockerInDockerSandbox(cri CRI, image string) SandboxFactory {
+func NewDockerInDockerSandbox(cri CRI, config *configfile.ConfigFile, image string) SandboxFactory {
 	d := &dindFactory{
 		CRI:   cri,
+		config: config,
 		image: image,
 	}
 	return d
@@ -220,7 +223,7 @@ func (d *dindFactory) SandboxCreate(ctx context.Context, log logr.Logger, name s
 
 	wasClean = true
 	sandbox := &dindSandbox{
-		CRI:       &Docker{dindClient},
+		CRI:       NewDocker(dindClient, d.config),
 		container: container,
 	}
 	return sandbox, nil
