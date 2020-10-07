@@ -56,7 +56,7 @@ func CopyToLogNoError(log logr.Logger, r io.Reader) {
 	CopyToLogPrefixNoError(log, r, "")
 }
 
-// LogClose closes a Closer and loggers any errors which occur.
+// LogClose closes a Closer and logs any errors which occur.
 func LogClose(log logr.Logger, c io.Closer, msg string) {
 	err := c.Close()
 	if err != nil {
