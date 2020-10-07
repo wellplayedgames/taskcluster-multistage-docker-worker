@@ -20,7 +20,6 @@ type Communicator struct {
 	capsLock sync.Mutex
 
 	isWorker bool
-	readyCh  chan struct{}
 	writer   io.Writer
 	log      logr.Logger
 }
@@ -32,7 +31,6 @@ func NewCommunicator(log logr.Logger, isWorker bool) *Communicator {
 		handlers:           map[string]MessageHandler{},
 
 		isWorker: isWorker,
-		readyCh:  make(chan struct{}),
 		writer:   bytes.NewBuffer(nil),
 		log:      log,
 	}
