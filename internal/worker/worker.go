@@ -1,3 +1,4 @@
+// This is the core implementation of the worker.
 package worker
 
 import (

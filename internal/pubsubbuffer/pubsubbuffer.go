@@ -1,3 +1,5 @@
+// This package implements a wrapper around bytes.Buffer which can be subscribed
+// to and will only return EOF when the source buffer is closed.
 package pubsubbuffer
 
 import (

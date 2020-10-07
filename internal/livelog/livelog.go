@@ -1,3 +1,5 @@
+// This package implements the livelog transport, optionally using websocktunnel
+// or just listening on a port.
 package livelog
 
 import (

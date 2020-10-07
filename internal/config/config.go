@@ -1,3 +1,4 @@
+// This package contains all of the types which are used throughout the program.
 package config
 
 import (

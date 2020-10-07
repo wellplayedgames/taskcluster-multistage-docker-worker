@@ -1,3 +1,6 @@
+// This package contains the container runtime interface abstraction. This
+// exists to abstract Docker and Docker-in-Docker away from the main worker
+// implementation.
 package cri
 
 import (

@@ -1,3 +1,6 @@
+// This package contains helpers to make the logging awesome. In particular,
+// here you can find a pretty logger and a log tee, which outputs logs to
+// multiple sources.
 package log
 
 import (

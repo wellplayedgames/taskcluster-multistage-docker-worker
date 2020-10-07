@@ -1,3 +1,6 @@
+// This package provides helper methods for producing errors which will mark
+// tasks as exception-ing rather than failing. This is used in Taskcluster to
+// indicate that it's the worker's fault, not the task's.
 package exception
 
 import "fmt"
