@@ -1,0 +1,30 @@
+#cloud-config
+
+users:
+  - name: build
+    uid: 2000
+
+write_files:
+  - path: /etc/systemd/system/worker-runner.service
+    permissions: 0644
+    owner: root
+    content: |
+      [Unit]
+      Description=Taskcluster Worker Runner
+      Wants=gcr-online.target
+      After=gcr-online.target
+
+      [Service]
+      Restart=on-failure
+      RestartSec=5s
+      Environment="HOME=/home/build"
+
+      ExecStartPre=/usr/bin/docker-credential-gcr configure-docker
+      ExecStart=/usr/bin/docker run --rm --net=host --privileged -v /home/build/.docker:/root/.docker -v /var/run/docker.sock:/var/run/docker.sock --name=worker-runner gcr.io/wpg-internal/taskcluster-multistage-docker-worker
+      ExecStop=/usr/bin/docker stop worker-runner
+      ExecStopPost=/usr/bin/docker rm worker-runner
+
+runcmd:
+  - systemctl daemon-reload
+  - systemctl enable worker-runner.service
+  - systemctl start worker-runner.service
