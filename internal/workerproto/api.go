@@ -151,7 +151,7 @@ func (c *Communicator) onHello(packet []byte) error {
 		"remoteCapabilities", p.Capabilities)
 
 	c.capsLock.Lock()
-	c.capsLock.Unlock()
+	defer c.capsLock.Unlock()
 
 	for _, cap := range p.Capabilities {
 		c.remoteCapabilities[cap] = struct{}{}

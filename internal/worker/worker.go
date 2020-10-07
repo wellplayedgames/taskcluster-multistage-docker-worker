@@ -134,11 +134,15 @@ func (w *Worker) Run(ctx context.Context, gracefulStop <-chan struct{}) error {
 	isFull := false
 	idleSince := &now
 	isShuttingDown := false
+	ctxDone := ctx.Done()
 
 	for {
 		select {
 		// Been told to exit.
-		case <-ctx.Done():
+		case <-ctxDone:
+			isShuttingDown = true
+			ctxDone = nil
+
 			if len(freeSlots) == config.ConcurrentTasks {
 				return ctx.Err()
 			}
@@ -160,7 +164,7 @@ func (w *Worker) Run(ctx context.Context, gracefulStop <-chan struct{}) error {
 				idleSince = &now
 			}
 
-			if (ctx.Err() != nil) && isIdle {
+			if isShuttingDown && isIdle {
 				return ctx.Err()
 			}
 
@@ -169,13 +173,12 @@ func (w *Worker) Run(ctx context.Context, gracefulStop <-chan struct{}) error {
 				workReq <- 1
 			}
 
-			if isShuttingDown && (len(freeSlots) == config.ConcurrentTasks) {
-				return nil
-			}
-
 		// New work claimed.
 		case resp := <-workRes:
 			if resp == nil {
+				workRes = nil
+				isShuttingDown = true
+
 				if len(freeSlots) == config.ConcurrentTasks {
 					return nil
 				}

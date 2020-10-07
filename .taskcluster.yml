@@ -5,7 +5,6 @@ tasks:
   $if: taskcluster_root_url == "https://taskcluster.internal.wpgapi.uk"
   then:
     $let:
-      repo: https://github.com/wellplayedgames/taskcluster-multistage-docker-worker
       imageName: gcr.io/wpg-internal/taskcluster-multistage-docker-worker
     in:
       - $if: (tasks_for == "github-push") && (event.ref == "refs/heads/main")
@@ -29,7 +28,7 @@ tasks:
                 - image: bitnami/git
                   command: ["/bin/bash", "-c"]
                   args:
-                  - git clone ${repo} . && git checkout ${event.after}
+                  - git clone ${event.repository.html_url} . && git checkout ${event.after}
                 - image: docker
                   args: [ "build", ".", "-t", { $eval: imageName } ]
                 - image: docker
@@ -57,7 +56,7 @@ tasks:
                 command: ["/bin/bash", "-c"]
                 args:
                   - |
-                    git clone ${repo} .
+                    git clone ${event.repository.html_url} .
                     && git checkout ${event.pull_request.head.sha}
                     && git rebase ${event.pull_request.base.sha}
               - image: docker

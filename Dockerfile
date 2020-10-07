@@ -4,8 +4,6 @@ WORKDIR /workspace
 ENV TASKCLUSTER_VERSION=v37.3.0
 ENV DOCKER_CREDENTIAL_GCR_VERSION=2.0.2
 
-
-
 COPY go.mod go.sum ./
 RUN go mod download
 

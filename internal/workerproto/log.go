@@ -84,6 +84,9 @@ func (l *logger) Error(err error, msg string, keysAndValues ...interface{}) {
 }
 
 func (l *logger) V(level int) logr.Logger {
+	// We don't handle verbosity here since we want worker-runner
+	// to receive all output logs, since our own logs will be lost when we
+	// shutdown.
 	return l
 }
 

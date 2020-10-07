@@ -102,10 +102,6 @@ func (d *dindFactory) SandboxCreate(ctx context.Context, log logr.Logger, name s
 		return nil, fmt.Errorf("error pulling dind image: %w", err)
 	}
 
-	var cancelCtx context.CancelFunc
-	ctx, cancelCtx = context.WithCancel(ctx)
-	defer cancelCtx()
-
 	spec := ContainerSpec{
 		Name: name,
 		Image: d.image,
@@ -169,7 +165,7 @@ func (d *dindFactory) SandboxCreate(ctx context.Context, log logr.Logger, name s
 		}
 
 		if status.IPAddress == "" {
-			return fmt.Errorf("container not no network")
+			return fmt.Errorf("container has no IP address")
 		}
 
 		return nil

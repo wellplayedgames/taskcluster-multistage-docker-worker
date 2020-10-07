@@ -1,4 +1,7 @@
-// This package contains all of the types which are used throughout the program.
+// This package contains the global worker configuration and task configuration
+// including the task payload.
+//
+// This is the home for types which are exposed externally to the worker.
 package config
 
 import (
