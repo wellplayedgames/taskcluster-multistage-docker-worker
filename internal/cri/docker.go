@@ -52,6 +52,7 @@ type Docker struct {
 
 var _ CRI = (*Docker)(nil)
 
+// NewDocker wraps a Docker client and config file as a CRI.
 func NewDocker(client client.APIClient, config *configfile.ConfigFile) *Docker {
 	return &Docker{
 		client: client,

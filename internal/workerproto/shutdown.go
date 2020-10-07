@@ -10,6 +10,8 @@ type gracefulTerminationPacket struct {
 	FinishTasks bool `json:"finish-tasks"`
 }
 
+// AddRemoteShutdown adds worker support for being remotely shutdown by
+// the runner.
 func AddRemoteShutdown(c *Communicator) func() error {
 	c.AddCapability("shutdown")
 	return func() error {
@@ -17,6 +19,8 @@ func AddRemoteShutdown(c *Communicator) func() error {
 	}
 }
 
+// AddGracefulTermination adds worker support for being asked to exit
+// gracefully.
 func AddGracefulTermination(c *Communicator) <-chan bool {
 	ch := make(chan bool, 1)
 

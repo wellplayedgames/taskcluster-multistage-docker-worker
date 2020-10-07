@@ -9,6 +9,7 @@ import (
 	"sync"
 )
 
+// MessageHandler is used to implement a single workerproto packet.
 type MessageHandler = func(packet []byte) error
 
 // Communicator runs a duplex stream to the worker-runner.
@@ -24,6 +25,11 @@ type Communicator struct {
 	log      logr.Logger
 }
 
+// NewCommunicator creates a new communicator given the log and whather the
+// communicator should act as the worker or runner.
+//
+// Run must be called with the input and output streams to manage the
+// communicator.
 func NewCommunicator(log logr.Logger, isWorker bool) *Communicator {
 	c := Communicator{
 		localCapabilities:  map[string]struct{}{},

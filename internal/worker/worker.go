@@ -3,6 +3,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -110,7 +111,7 @@ func (w *Worker) Run(ctx context.Context, gracefulStop <-chan struct{}) error {
 						WorkerGroup: config.WorkerGroup,
 						WorkerID:    config.WorkerID,
 					})
-					if err == context.Canceled {
+					if errors.Is(err, context.Canceled) {
 						return backoff.Permanent(err)
 					} else if err != nil {
 						w.log.Error(err, "error claiming work")

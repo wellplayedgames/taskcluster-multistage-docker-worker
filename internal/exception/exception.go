@@ -20,6 +20,10 @@ func (e *exception) Error() string {
 	return fmt.Sprintf("Exception (%s) %v", e.kind, e.inner)
 }
 
+func (e *exception) Unwrap() error {
+	return e.inner
+}
+
 func (e *exception) ExceptionKind() string {
 	return e.kind
 }

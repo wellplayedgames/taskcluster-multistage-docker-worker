@@ -13,8 +13,11 @@ type protoPacket struct {
 	Type string `json:"type"`
 }
 
+// ProtoHandler is used by the low-level transport code to handle messages
+// from an input stream.
 type ProtoHandler = func(packetType string, msg []byte) error
 
+// Parse is a low-level function used to parse the input stream for a workerproto.
 func Parse(log logr.Logger, r io.Reader, f ProtoHandler) error {
 	rd := bufio.NewReader(r)
 
@@ -57,6 +60,8 @@ func Parse(log logr.Logger, r io.Reader, f ProtoHandler) error {
 	}
 }
 
+// Write is a low-level transport function which writes a single workerproto
+// message to an output stream.
 func Write(w io.Writer, packet interface{}) error {
 	var buf bytes.Buffer
 	e := json.NewEncoder(&buf)
