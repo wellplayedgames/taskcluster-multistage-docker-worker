@@ -52,6 +52,7 @@ tasks:
             - secrets:get:shared/github
           payload:
             steps:
+              - image: gcr.io/wpg-internal/ci-bootstrap
               - image: bitnami/git
                 command: ["/bin/bash"]
                 args:
