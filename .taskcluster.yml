@@ -27,9 +27,9 @@ tasks:
               $flatten:
                 - image: gcr.io/wpg-internal/ci-bootstrap
                 - image: bitnami/git
-                  command: ["/bin/bash"]
+                  command: ["/bin/bash", "-c"]
                   args:
-                  - git clone ${repo} && git checkout ${event.after}
+                  - git clone ${repo} . && git checkout ${event.after}
                 - image: docker
                   args: [ "build", ".", "-t", { $eval: imageName } ]
                 - image: docker
@@ -54,9 +54,12 @@ tasks:
             steps:
               - image: gcr.io/wpg-internal/ci-bootstrap
               - image: bitnami/git
-                command: ["/bin/bash"]
+                command: ["/bin/bash", "-c"]
                 args:
-                  - git clone ${repo} && git checkout ${event.pull_request.head.sha} && git rebase ${event.pull_request.base.sha}
+                  - |
+                    git clone ${repo} .
+                    && git checkout ${event.pull_request.head.sha}
+                    && git rebase ${event.pull_request.base.sha}
               - image: docker
                 args: [ "build", ".", "-t", { $eval: imageName } ]
           metadata:
