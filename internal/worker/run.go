@@ -64,6 +64,10 @@ func watchContainer(ctx context.Context, log logr.Logger, container cri.Containe
 }
 
 func (w *Worker) resolveValueFrom(ctx context.Context, claim *tcqueue.TaskClaim, valueFrom *config.ValueFrom) (result string, err error) {
+	if valueFrom == nil {
+		return "", nil
+	}
+
 	if vfs := valueFrom.ValueFromSecret; vfs != nil {
 		credentials := taskCredentials(&claim.Credentials)
 		secrets := tcsecrets.New(credentials, w.config.RootURL)
