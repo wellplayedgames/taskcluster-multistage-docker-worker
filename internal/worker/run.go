@@ -21,6 +21,10 @@ import (
 	"github.com/wojas/genericr"
 )
 
+const (
+	defaultTimeoutSecs = 60 * 60
+)
+
 func (w *Worker) uploadLog(log logr.Logger, queue *tcqueue.Queue, claim *tcqueue.TaskClaim, contents pubsubbuffer.WriteSubscribeCloser) {
 	err := createS3Artifact(queue, claim, liveLogBacking, "text/plain", time.Time(claim.Task.Expires), contents.Len(), contents.Subscribe(context.Background()))
 	if err != nil {
@@ -168,11 +172,21 @@ func (w *Worker) runStep(ctx context.Context, log logr.Logger, sandbox cri.CRI, 
 }
 
 func (w *Worker) runTaskLogic(ctx context.Context, syslog, log logr.Logger, slot int, claim *tcqueue.TaskClaim, wr io.Writer) error {
+	var ctxCancel context.CancelFunc
+	ctx, ctxCancel = context.WithCancel(ctx)
+	defer ctxCancel()
+
 	var payload config.Payload
 	err := json.Unmarshal(claim.Task.Payload, &payload)
 	if err != nil {
 		return exception.MalformedPayload(err)
 	}
+
+	timeoutSecs := time.Duration(payload.MaxRunTime)
+	if timeoutSecs <= 0 {
+		timeoutSecs = defaultTimeoutSecs
+	}
+	timeoutCh := time.After(time.Second * timeoutSecs)
 
 	// Create Sandbox
 	sandboxName := fmt.Sprintf("taskcluster_%s_%d", claim.Status.TaskID, claim.RunID)
@@ -231,6 +245,9 @@ func (w *Worker) runTaskLogic(ctx context.Context, syslog, log logr.Logger, slot
 		select {
 		case err = <-nextCh:
 			return err
+
+		case <-timeoutCh:
+			return fmt.Errorf("exceeded max run-time")
 
 		case err = <-exitCh:
 			return err
