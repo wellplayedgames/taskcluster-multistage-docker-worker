@@ -55,7 +55,7 @@ tasks:
               - image: bitnami/git
                 command: ["/bin/bash", "-c"]
                 args:
-                  - |
+                  - >-
                     git clone ${event.repository.html_url} .
                     && git checkout ${event.pull_request.head.sha}
                     && git rebase ${event.pull_request.base.sha}
