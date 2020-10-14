@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	defaultTimeoutSecs = 60 * 60
+	defaultTaskRunTimeout = 60 * 60 * time.Second
 )
 
 func (w *Worker) uploadLog(log logr.Logger, queue *tcqueue.Queue, claim *tcqueue.TaskClaim, contents pubsubbuffer.WriteSubscribeCloser) {
@@ -178,9 +178,9 @@ func (w *Worker) runTaskLogic(ctx context.Context, syslog, log logr.Logger, slot
 		return exception.MalformedPayload(err)
 	}
 
-	maxRunTime := time.Duration(payload.MaxRunTime)
+	maxRunTime := time.Duration(payload.MaxRunTime) * time.Second
 	if maxRunTime <= 0 {
-		maxRunTime = defaultTimeoutSecs
+		maxRunTime = defaultTaskRunTimeout
 	}
 
 	var ctxCancel context.CancelFunc
