@@ -172,21 +172,20 @@ func (w *Worker) runStep(ctx context.Context, log logr.Logger, sandbox cri.CRI, 
 }
 
 func (w *Worker) runTaskLogic(ctx context.Context, syslog, log logr.Logger, slot int, claim *tcqueue.TaskClaim, wr io.Writer) error {
-	var ctxCancel context.CancelFunc
-	ctx, ctxCancel = context.WithCancel(ctx)
-	defer ctxCancel()
-
 	var payload config.Payload
 	err := json.Unmarshal(claim.Task.Payload, &payload)
 	if err != nil {
 		return exception.MalformedPayload(err)
 	}
 
-	timeoutSecs := time.Duration(payload.MaxRunTime)
-	if timeoutSecs <= 0 {
-		timeoutSecs = defaultTimeoutSecs
+	maxRunTime := time.Duration(payload.MaxRunTime)
+	if maxRunTime <= 0 {
+		maxRunTime = defaultTimeoutSecs
 	}
-	timeoutCh := time.After(time.Second * timeoutSecs)
+
+	var ctxCancel context.CancelFunc
+	ctx, ctxCancel = context.WithTimeout(ctx, maxRunTime)
+	defer ctxCancel()
 
 	// Create Sandbox
 	sandboxName := fmt.Sprintf("taskcluster_%s_%d", claim.Status.TaskID, claim.RunID)
@@ -245,9 +244,6 @@ func (w *Worker) runTaskLogic(ctx context.Context, syslog, log logr.Logger, slot
 		select {
 		case err = <-nextCh:
 			return err
-
-		case <-timeoutCh:
-			return fmt.Errorf("exceeded max run-time")
 
 		case err = <-exitCh:
 			return err
