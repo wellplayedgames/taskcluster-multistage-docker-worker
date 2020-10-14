@@ -28,5 +28,6 @@ type Step struct {
 
 // Payload contains the entire payload for a task.
 type Payload struct {
-	Steps []Step `json:"steps"`
+	MaxRunTime int    `json:"maxRunTime,omitempty"`
+	Steps      []Step `json:"steps"`
 }

@@ -21,6 +21,10 @@ import (
 	"github.com/wojas/genericr"
 )
 
+const (
+	defaultTimeoutSecs = 60 * 60
+)
+
 func (w *Worker) uploadLog(log logr.Logger, queue *tcqueue.Queue, claim *tcqueue.TaskClaim, contents pubsubbuffer.WriteSubscribeCloser) {
 	err := createS3Artifact(queue, claim, liveLogBacking, "text/plain", time.Time(claim.Task.Expires), contents.Len(), contents.Subscribe(context.Background()))
 	if err != nil {
@@ -64,6 +68,10 @@ func watchContainer(ctx context.Context, log logr.Logger, container cri.Containe
 }
 
 func (w *Worker) resolveValueFrom(ctx context.Context, claim *tcqueue.TaskClaim, valueFrom *config.ValueFrom) (result string, err error) {
+	if valueFrom == nil {
+		return "", nil
+	}
+
 	if vfs := valueFrom.ValueFromSecret; vfs != nil {
 		credentials := taskCredentials(&claim.Credentials)
 		secrets := tcsecrets.New(credentials, w.config.RootURL)
@@ -169,6 +177,15 @@ func (w *Worker) runTaskLogic(ctx context.Context, syslog, log logr.Logger, slot
 	if err != nil {
 		return exception.MalformedPayload(err)
 	}
+
+	maxRunTime := time.Duration(payload.MaxRunTime)
+	if maxRunTime <= 0 {
+		maxRunTime = defaultTimeoutSecs
+	}
+
+	var ctxCancel context.CancelFunc
+	ctx, ctxCancel = context.WithTimeout(ctx, maxRunTime)
+	defer ctxCancel()
 
 	// Create Sandbox
 	sandboxName := fmt.Sprintf("taskcluster_%s_%d", claim.Status.TaskID, claim.RunID)
