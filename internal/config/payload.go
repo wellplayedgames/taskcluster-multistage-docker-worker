@@ -30,4 +30,7 @@ type Step struct {
 type Payload struct {
 	MaxRunTime int    `json:"maxRunTime,omitempty"`
 	Steps      []Step `json:"steps"`
+
+	// Environment shared between steps.
+	Env []EnvVar `json:"env,omitempty"`
 }
