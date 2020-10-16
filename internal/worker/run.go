@@ -90,9 +90,10 @@ func (w *Worker) resolveValueFrom(ctx context.Context, claim *tcqueue.TaskClaim,
 	return
 }
 
-func (w *Worker) runStep(ctx context.Context, log logr.Logger, sandbox cri.CRI, claim *tcqueue.TaskClaim, rootContainer cri.Container, stepIdx int, step *config.Step, deps []<-chan error, ch chan<- error) {
+func (w *Worker) runStep(ctx context.Context, log logr.Logger, sandbox cri.CRI, claim *tcqueue.TaskClaim, rootContainer cri.Container, stepIdx int, payload *config.Payload, deps []<-chan error, ch chan<- error) {
 	pullLog := log.WithName(fmt.Sprintf("pull %d", stepIdx))
 	log = log.WithName(fmt.Sprintf("step %d", stepIdx))
+	step := &payload.Steps[stepIdx]
 
 	var err error
 	defer func() {
@@ -122,9 +123,16 @@ func (w *Worker) runStep(ctx context.Context, log logr.Logger, sandbox cri.CRI, 
 		"RUN_ID": strconv.FormatInt(claim.RunID, 10),
 	}
 
-	for idx := range step.Env {
+	for idx := 0; idx < len(step.Env) + len(payload.Env); idx += 1 {
+		var e *config.EnvVar
+
+		if idx < len(payload.Env) {
+			e = &payload.Env[idx]
+		} else {
+			e = &step.Env[idx - len(payload.Env)]
+		}
+
 		var value string
-		e := &step.Env[idx]
 		value, err = w.resolveValueFrom(ctx, claim, e.ValueFrom)
 		if err != nil {
 			return
@@ -236,7 +244,7 @@ func (w *Worker) runTaskLogic(ctx context.Context, syslog, log logr.Logger, slot
 		step := &payload.Steps[idx]
 		stepCh := make(chan error, 1)
 
-		go w.runStep(ctx, log, sandbox, claim, proxyContainer, idx, step, []<-chan error{nextCh}, stepCh)
+		go w.runStep(ctx, log, sandbox, claim, proxyContainer, idx, payload, []<-chan error{nextCh}, stepCh)
 		nextCh = stepCh
 	}
 
