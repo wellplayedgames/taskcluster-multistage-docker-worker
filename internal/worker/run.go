@@ -241,10 +241,8 @@ func (w *Worker) runTaskLogic(ctx context.Context, syslog, log logr.Logger, slot
 
 	// Configure containers
 	for idx := range payload.Steps {
-		step := &payload.Steps[idx]
 		stepCh := make(chan error, 1)
-
-		go w.runStep(ctx, log, sandbox, claim, proxyContainer, idx, payload, []<-chan error{nextCh}, stepCh)
+		go w.runStep(ctx, log, sandbox, claim, proxyContainer, idx, &payload, []<-chan error{nextCh}, stepCh)
 		nextCh = stepCh
 	}
 
