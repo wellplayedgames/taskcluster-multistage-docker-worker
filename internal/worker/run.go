@@ -115,7 +115,11 @@ func (w *Worker) runStep(ctx context.Context, log logr.Logger, sandbox cri.CRI, 
 	}
 
 	env := map[string]string{
+		"TASKCLUSTER_ROOT_URL": w.config.RootURL,
 		"TASKCLUSTER_PROXY_URL": "http://localhost:8080/",
+		"TASK_GROUP_ID": claim.Status.TaskGroupID,
+		"TASK_ID": claim.Status.TaskID,
+		"RUN_ID": strconv.FormatInt(claim.RunID, 10),
 	}
 
 	for idx := range step.Env {
