@@ -80,10 +80,8 @@ func prettyValue(v interface{}) string {
 	return string(by)
 }
 
-// FancyLog is a logging function for genericr which prints a format which is
-// nice to use for CI output.
-func FancyLog(e genericr.Entry)  string {
-	nameColours := []func(args interface{}) aurora.Value{
+var (
+	logPrefixColours = []func(args interface{}) aurora.Value{
 		aurora.Cyan,
 		aurora.Blue,
 		aurora.Yellow,
@@ -91,7 +89,11 @@ func FancyLog(e genericr.Entry)  string {
 		aurora.Red,
 		aurora.Green,
 	}
+)
 
+// FancyLog is a logging function for genericr which prints a format which is
+// nice to use for CI output.
+func FancyLog(e genericr.Entry) string {
 	now := time.Now().UTC().Format(time.RFC3339)[:20]
 
 	buf := bytes.NewBuffer(make([]byte, 0, 160))
@@ -114,7 +116,7 @@ func FancyLog(e genericr.Entry)  string {
 	colour := aurora.White
 	if len(e.Name) > 0 {
 		nameHash := md5.Sum(([]byte)(e.Name))
-		colour = nameColours[int(nameHash[0])%len(nameColours)]
+		colour = logPrefixColours[int(nameHash[0])%len(logPrefixColours)]
 	}
 
 	buf.WriteString(colour(prefix.String()).String())
