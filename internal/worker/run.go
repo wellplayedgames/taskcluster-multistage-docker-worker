@@ -116,20 +116,20 @@ func (w *Worker) runStep(ctx context.Context, log logr.Logger, sandbox cri.CRI, 
 	}
 
 	env := map[string]string{
-		"TASKCLUSTER_ROOT_URL": w.config.RootURL,
+		"TASKCLUSTER_ROOT_URL":  w.config.RootURL,
 		"TASKCLUSTER_PROXY_URL": "http://localhost:8080/",
-		"TASK_GROUP_ID": claim.Status.TaskGroupID,
-		"TASK_ID": claim.Status.TaskID,
-		"RUN_ID": strconv.FormatInt(claim.RunID, 10),
+		"TASK_GROUP_ID":         claim.Status.TaskGroupID,
+		"TASK_ID":               claim.Status.TaskID,
+		"RUN_ID":                strconv.FormatInt(claim.RunID, 10),
 	}
 
-	for idx := 0; idx < len(step.Env) + len(payload.Env); idx += 1 {
+	for idx := 0; idx < len(step.Env)+len(payload.Env); idx += 1 {
 		var e *config.EnvVar
 
 		if idx < len(payload.Env) {
 			e = &payload.Env[idx]
 		} else {
-			e = &step.Env[idx - len(payload.Env)]
+			e = &step.Env[idx-len(payload.Env)]
 		}
 
 		var value string
