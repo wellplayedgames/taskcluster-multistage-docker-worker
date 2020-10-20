@@ -6,6 +6,7 @@ package log
 import (
 	"bufio"
 	"bytes"
+	"crypto/md5"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -79,25 +80,46 @@ func prettyValue(v interface{}) string {
 	return string(by)
 }
 
+var (
+	logPrefixColours = []func(args interface{}) aurora.Value{
+		aurora.Cyan,
+		aurora.Blue,
+		aurora.Yellow,
+		aurora.Magenta,
+		aurora.Red,
+		aurora.Green,
+	}
+)
+
 // FancyLog is a logging function for genericr which prints a format which is
 // nice to use for CI output.
-func FancyLog(e genericr.Entry)  string {
+func FancyLog(e genericr.Entry) string {
 	now := time.Now().UTC().Format(time.RFC3339)[:20]
-	buf := bytes.NewBuffer(make([]byte, 0, 160))
-	buf.WriteString(now)
 
+	buf := bytes.NewBuffer(make([]byte, 0, 160))
+
+	prefix := bytes.NewBuffer(make([]byte, 0, 30))
+	prefix.WriteString(now)
 	if len(e.Name) > 0 {
-		buf.WriteByte(' ')
-		buf.WriteString(e.Name)
+		prefix.WriteByte(' ')
+		prefix.WriteString(e.Name)
 	}
 
-	buf.WriteByte(' ')
+	prefix.WriteByte(' ')
 
-	l := buf.Len()
+	l := prefix.Len()
 	for l < 30 {
-		buf.WriteByte(' ')
+		prefix.WriteByte(' ')
 		l += 1
 	}
+
+	colour := aurora.White
+	if len(e.Name) > 0 {
+		nameHash := md5.Sum(([]byte)(e.Name))
+		colour = logPrefixColours[int(nameHash[0])%len(logPrefixColours)]
+	}
+
+	buf.WriteString(colour(prefix.String()).String())
 
 	if e.Error != nil {
 		buf.WriteString(aurora.Red(e.Message).String())
