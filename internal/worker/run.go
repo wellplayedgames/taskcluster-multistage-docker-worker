@@ -156,6 +156,7 @@ func (w *Worker) runStep(ctx context.Context, log logr.Logger, sandbox cri.CRI, 
 		Binds: []string{
 			"/var/run/docker.sock:/var/run/docker.sock",
 		},
+		Privileged: step.Privileged,
 		PodWith: rootContainer,
 	})
 	if err != nil {

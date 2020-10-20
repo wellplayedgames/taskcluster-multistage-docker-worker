@@ -24,6 +24,8 @@ type Step struct {
 	Command []string `json:"command,omitempty"`
 	Args    []string `json:"args,omitempty"`
 	Env     []EnvVar `json:"env,omitempty"`
+
+	Privileged bool `json:"privileged,omitempty"`
 }
 
 // Payload contains the entire payload for a task.
