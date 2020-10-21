@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/docker/distribution/reference"
 	"io"
 	"io/ioutil"
 	"strings"
@@ -23,26 +24,6 @@ import (
 var (
 	dockerEpoch = time.Time{}
 )
-
-func canonicalImage(image string) string {
-	repo := image
-	tagOffset := strings.IndexRune(image, ':')
-	if tagOffset >= 0 {
-		repo = image[:tagOffset]
-	}
-
-	numSlashes := strings.Count(repo, "/")
-	switch numSlashes {
-	case 0:
-		return "docker.io/library/" + image
-
-	case 1:
-		return "docker.io/" + image
-
-	default:
-		return image
-	}
-}
 
 // Docker is a Docker CRI implementation.
 type Docker struct {
@@ -70,9 +51,13 @@ func encodeAuthToBase64(authConfig ctypes.AuthConfig) (string, error) {
 
 // ImagePull fetches a remote image into the local Docker instance.
 func (d *Docker) ImagePull(ctx context.Context, log logr.Logger, image string) (err error) {
-	canonImage := canonicalImage(image)
-	imageParts := strings.SplitN(canonImage, "/", 2)
-	authConfig, err := d.config.GetAuthConfig(imageParts[0])
+	canonImage, err := reference.ParseNormalizedNamed(image)
+	if err != nil {
+		return fmt.Errorf("error pulling %s: %w", image, err)
+	}
+
+	domain := reference.Domain(canonImage)
+	authConfig, err := d.config.GetAuthConfig(domain)
 	if err != nil {
 		return fmt.Errorf("error pulling %s: %w", image, err)
 	}
@@ -82,7 +67,7 @@ func (d *Docker) ImagePull(ctx context.Context, log logr.Logger, image string) (
 		return fmt.Errorf("error encoding auth: %w", err)
 	}
 
-	r, err := d.client.ImagePull(ctx, canonImage, types.ImagePullOptions{
+	r, err := d.client.ImagePull(ctx, canonImage.String(), types.ImagePullOptions{
 		RegistryAuth:  encodedAuth,
 	})
 	if err != nil {
