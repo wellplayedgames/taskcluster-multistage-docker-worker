@@ -6,7 +6,7 @@ require (
 	github.com/alecthomas/kong v0.2.11
 	github.com/cenkalti/backoff/v3 v3.2.2
 	github.com/docker/cli v0.0.0-20201002160228-7c0824cf3fa4
-	github.com/docker/distribution v2.7.1+incompatible // indirect
+	github.com/docker/distribution v2.7.1+incompatible
 	github.com/docker/docker v1.13.1
 	github.com/docker/docker-credential-helpers v0.6.3 // indirect
 	github.com/docker/go-connections v0.4.0 // indirect

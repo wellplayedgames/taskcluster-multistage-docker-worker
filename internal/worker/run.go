@@ -102,9 +102,11 @@ func (w *Worker) runStep(ctx context.Context, log logr.Logger, sandbox cri.CRI, 
 	}()
 
 	// Pull the image.
-	err = sandbox.ImagePull(ctx, pullLog, step.Image)
-	if err != nil {
-		return
+	if step.Pull == nil || *step.Pull {
+		err = sandbox.ImagePull(ctx, pullLog, step.Image)
+		if err != nil {
+			return
+		}
 	}
 
 	// Wait for all dependencies.
@@ -156,6 +158,7 @@ func (w *Worker) runStep(ctx context.Context, log logr.Logger, sandbox cri.CRI, 
 		Binds: []string{
 			"/var/run/docker.sock:/var/run/docker.sock",
 		},
+		Privileged: step.Privileged,
 		PodWith: rootContainer,
 	})
 	if err != nil {
