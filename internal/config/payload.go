@@ -24,6 +24,7 @@ type Step struct {
 	Command []string `json:"command,omitempty"`
 	Args    []string `json:"args,omitempty"`
 	Env     []EnvVar `json:"env,omitempty"`
+	Pull    *bool    `json:"pull,omitempty"`
 
 	Privileged bool `json:"privileged,omitempty"`
 }

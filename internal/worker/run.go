@@ -102,9 +102,11 @@ func (w *Worker) runStep(ctx context.Context, log logr.Logger, sandbox cri.CRI, 
 	}()
 
 	// Pull the image.
-	err = sandbox.ImagePull(ctx, pullLog, step.Image)
-	if err != nil {
-		return
+	if step.Pull == nil || *step.Pull {
+		err = sandbox.ImagePull(ctx, pullLog, step.Image)
+		if err != nil {
+			return
+		}
 	}
 
 	// Wait for all dependencies.
