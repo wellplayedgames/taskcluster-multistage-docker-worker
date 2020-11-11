@@ -20,13 +20,13 @@ type EnvVar struct {
 
 // Step is a single stage in the build process.
 type Step struct {
-	Image   string   `json:"image"`
-	Command []string `json:"command,omitempty"`
-	Args    []string `json:"args,omitempty"`
-	Env     []EnvVar `json:"env,omitempty"`
-	Pull    *bool    `json:"pull,omitempty"`
-
-	Privileged bool `json:"privileged,omitempty"`
+	Image      string   `json:"image"`
+	Command    []string `json:"command,omitempty"`
+	Args       []string `json:"args,omitempty"`
+	Env        []EnvVar `json:"env,omitempty"`
+	WorkingDir string   `json:"workingDir,omitempty"`
+	Pull       *bool    `json:"pull,omitempty"`
+	Privileged bool     `json:"privileged,omitempty"`
 }
 
 // Payload contains the entire payload for a task.
