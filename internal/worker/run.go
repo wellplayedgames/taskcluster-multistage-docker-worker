@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"path"
 	"strconv"
 	"time"
 
@@ -147,19 +148,29 @@ func (w *Worker) runStep(ctx context.Context, log logr.Logger, sandbox cri.CRI, 
 		env[e.Name] = value
 	}
 
+	workingDir := "/workspace"
 	containerName := fmt.Sprintf("step-%d", stepIdx)
+
+	if step.WorkingDir != "" {
+		if path.IsAbs(step.WorkingDir) {
+			workingDir = step.WorkingDir
+		} else {
+			workingDir = path.Join(workingDir, step.WorkingDir)
+		}
+	}
+
 	container, err := sandbox.ContainerCreate(ctx, &cri.ContainerSpec{
 		Name:       containerName,
 		Image:      step.Image,
 		Entrypoint: step.Command,
 		Command:    step.Args,
 		Env:        env,
-		WorkingDir: "/workspace",
+		WorkingDir: workingDir,
 		Binds: []string{
 			"/var/run/docker.sock:/var/run/docker.sock",
 		},
 		Privileged: step.Privileged,
-		PodWith: rootContainer,
+		PodWith:    rootContainer,
 	})
 	if err != nil {
 		return
