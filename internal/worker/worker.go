@@ -9,8 +9,8 @@ import (
 
 	"github.com/cenkalti/backoff/v3"
 	"github.com/go-logr/logr"
-	tcclient "github.com/taskcluster/taskcluster/v37/clients/client-go"
-	"github.com/taskcluster/taskcluster/v37/clients/client-go/tcqueue"
+	tcclient "github.com/taskcluster/taskcluster/v40/clients/client-go"
+	"github.com/taskcluster/taskcluster/v40/clients/client-go/tcqueue"
 	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/config"
 	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/cri"
 	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/livelog"
