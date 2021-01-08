@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/url"
 	"path"
 	"strconv"
 	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/logrusorgru/aurora/v3"
+	tcurls "github.com/taskcluster/taskcluster-lib-urls"
 	"github.com/taskcluster/taskcluster/v37/clients/client-go/tcqueue"
 	"github.com/taskcluster/taskcluster/v37/clients/client-go/tcsecrets"
 	"github.com/tidwall/gjson"
@@ -34,13 +36,13 @@ func (w *Worker) uploadLog(log logr.Logger, queue *tcqueue.Queue, claim *tcqueue
 	}
 
 	runIdStr := strconv.FormatInt(claim.RunID, 10)
-	url, err := queue.GetArtifact_SignedURL(claim.Status.TaskID, runIdStr, liveLogBacking, time.Until(time.Time(claim.Task.Expires)))
-	if err != nil {
-		log.Error(err, "failed to get backing log URL")
-		return
-	}
+	route := fmt.Sprintf("/task/%s/runs/%s/artifacts/%s",
+		url.QueryEscape(claim.Status.TaskID),
+		url.QueryEscape(runIdStr),
+		url.QueryEscape(liveLogBacking))
+	logURL := tcurls.API(queue.RootURL, queue.ServiceName, queue.APIVersion, route)
 
-	err = createRedirectArtifact(queue, claim, liveLogName, url.String(), "text/plain", time.Time(claim.Task.Expires))
+	err = createRedirectArtifact(queue, claim, liveLogName, logURL, "text/plain", time.Time(claim.Task.Expires))
 	if err != nil {
 		log.Error(err, "failed to redirect live log to backing")
 		return
