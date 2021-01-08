@@ -20,7 +20,7 @@ write_files:
       Environment="HOME=/home/build"
 
       ExecStartPre=/usr/bin/docker-credential-gcr configure-docker
-      ExecStart=/usr/bin/docker run --rm --net=host --privileged -v /home/build/.docker:/root/.docker -v /var/run/docker.sock:/var/run/docker.sock --name=worker-runner gcr.io/wpg-internal/taskcluster-multistage-docker-worker
+      ExecStart=/usr/bin/docker run --rm --net=host --privileged -v /home/build/.docker:/root/.docker -v /var/run/docker.sock:/var/run/docker.sock -v /etc/docker-worker:/etc/docker-worker --name=worker-runner gcr.io/wpg-internal/taskcluster-multistage-docker-worker
       ExecStop=/usr/bin/docker stop worker-runner
       ExecStopPost=/usr/bin/docker rm worker-runner
 

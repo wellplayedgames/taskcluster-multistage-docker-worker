@@ -4,3 +4,4 @@ worker:
   implementation: generic-worker
   path: /multistage-docker-worker
   configPath: /generic-worker-config.yml
+cacheOverRestarts: /etc/docker-worker/worker-runner-cache.yaml

@@ -18,6 +18,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o multista
 
 FROM gcr.io/distroless/static
 ADD etc/worker-runner.yaml /worker-runner.yaml
+RUN mkdir /etc/docker-worker/
 COPY --from=build /workspace/start-worker /workspace/multistage-docker-worker /
 COPY --from=build /workspace/docker-credential-gcr /usr/bin/
 ENTRYPOINT ["/start-worker", "/worker-runner.yaml"]
