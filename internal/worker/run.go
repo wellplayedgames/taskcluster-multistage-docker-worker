@@ -317,7 +317,11 @@ func (w *Worker) RunTask(ctx context.Context, slot int, claim *tcqueue.TaskClaim
 
 	liveLogr.Info(aurora.Green("Starting task on multistage-docker-worker").String())
 
-	err := createRedirectArtifact(queue, claim, liveLogName, logUrl, "text/plain", time.Time(claim.Task.Expires))
+	err := createRedirectArtifact(queue, claim, liveLogInProgress, logUrl, "text/plain", time.Time(claim.Task.Expires))
+	if err == nil {
+		err = createLinkArtifact(queue, claim, liveLogName, liveLogInProgress, time.Time(claim.Task.Expires))
+	}
+
 	if err != nil {
 		log.Error(err, "error creating live-log")
 		queue.ReportException(claim.Status.TaskID, runIdStr, &tcqueue.TaskExceptionRequest{

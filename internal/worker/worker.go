@@ -17,8 +17,9 @@ import (
 )
 
 const (
-	liveLogName    = "public/logs/live.log"
-	liveLogBacking = "public/logs/live-backing.log"
+	liveLogName       = "public/logs/live.log"
+	liveLogBacking    = "public/logs/live-backing.log"
+	liveLogInProgress = "public/logs/in-progress.log"
 
 	reclaimSafetyInterval = 60 * time.Second
 )
@@ -188,7 +189,7 @@ func (w *Worker) Run(ctx context.Context, gracefulStop <-chan struct{}) error {
 
 			now := time.Now()
 			if config.ShutdownOnIdleSeconds != nil && len(resp.Tasks) == 0 && idleSince != nil {
-				if now.Sub(*idleSince) > time.Duration(*config.ShutdownOnIdleSeconds) * time.Second {
+				if now.Sub(*idleSince) > time.Duration(*config.ShutdownOnIdleSeconds)*time.Second {
 					w.log.Info("Idle, shutting down")
 					return w.shutdown()
 				}
