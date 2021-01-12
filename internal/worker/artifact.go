@@ -32,6 +32,24 @@ func createRedirectArtifact(queue *tcqueue.Queue, claim *tcqueue.TaskClaim, name
 	return err
 }
 
+func createLinkArtifact(queue *tcqueue.Queue, claim *tcqueue.TaskClaim, name, target string, expires time.Time) error {
+	createReq := tcqueue.LinkArtifactRequest{
+		Expires:     tcclient.Time(expires),
+		StorageType: "link",
+		Artifact:    target,
+	}
+
+	reqBy, err := json.Marshal(&createReq)
+	if err != nil {
+		return err
+	}
+
+	req := tcqueue.PostArtifactRequest(reqBy)
+	runIdStr := strconv.FormatInt(claim.RunID, 10)
+	_, err = queue.CreateArtifact(claim.Status.TaskID, runIdStr, name, &req)
+	return err
+}
+
 func createS3Artifact(queue *tcqueue.Queue, claim *tcqueue.TaskClaim, name, contentType string, expires time.Time, contentLen int, r io.Reader) error {
 	createReq := tcqueue.S3ArtifactRequest{
 		ContentType: contentType,
