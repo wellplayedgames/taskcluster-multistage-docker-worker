@@ -21,7 +21,7 @@ require (
 	github.com/opencontainers/runc v0.1.1 // indirect
 	github.com/taskcluster/slugid-go v1.1.0
 	github.com/taskcluster/taskcluster-lib-urls v13.0.1+incompatible
-	github.com/taskcluster/taskcluster/v40 v40.0.0
+	github.com/taskcluster/taskcluster/v40 v40.0.3
 	github.com/tidwall/gjson v1.6.1
 	github.com/wojas/genericr v0.2.0
 	go.uber.org/zap v1.10.0

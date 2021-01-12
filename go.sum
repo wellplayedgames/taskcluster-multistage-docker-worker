@@ -273,8 +273,8 @@ github.com/taskcluster/slugid-go v1.1.0 h1:SWsUplliyamdYzOKVM4+lDohZKuL63fKreGkv
 github.com/taskcluster/slugid-go v1.1.0/go.mod h1:5sOAcPHjqso1UkKxSl77CkKgOwha0D9X0msBKBj0AOg=
 github.com/taskcluster/taskcluster-lib-urls v13.0.1+incompatible h1:Q3kagxQiHw7QNckRoeeBV16FDvyQC+iSmda99bJEK+U=
 github.com/taskcluster/taskcluster-lib-urls v13.0.1+incompatible/go.mod h1:ALqTgi15AmJGEGubRKM0ydlLAFatlQPrQrmal9YZpQs=
-github.com/taskcluster/taskcluster/v40 v40.0.0 h1:RZ0SJH2DBeaLX/MVnnYAHDrswgpK00Qv1l3dRLJO80k=
-github.com/taskcluster/taskcluster/v40 v40.0.0/go.mod h1:jaTcMxFbSxPorQ1uNtua+A2OVS4I5D5fOrse4PI2NDo=
+github.com/taskcluster/taskcluster/v40 v40.0.3 h1:zGBuS3vn5l3y5daxjj2gNmiIfz8wRp3IbCFD3KesNSA=
+github.com/taskcluster/taskcluster/v40 v40.0.3/go.mod h1:SfJ+JNkCsLankklyYf62Q1rIcVkjPeXBb1dr6fY2JWU=
 github.com/tent/hawk-go v0.0.0-20161026210932-d341ea318957 h1:6Fre/uvwovW5YY4nfHZk66cAg9HjT9YdFSAJHUUgOyQ=
 github.com/tent/hawk-go v0.0.0-20161026210932-d341ea318957/go.mod h1:dch7ywQEefE1ibFqBG1erFibrdUIwovcwQjksYuHuP4=
 github.com/tidwall/gjson v1.6.1 h1:LRbvNuNuvAiISWg6gxLEFuCe72UKy5hDqhxW/8183ws=

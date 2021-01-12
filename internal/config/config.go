@@ -45,7 +45,7 @@ var DefaultConfig = Config{
 	LiveLogPort: 13000,
 
 	DindImage:             "docker:dind",
-	TaskclusterProxyImage: "taskcluster/taskcluster-proxy:v40.0.0",
+	TaskclusterProxyImage: "taskcluster/taskcluster-proxy:v40.0.3",
 
 	ConcurrentTasks: 1,
 }
