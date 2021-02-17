@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"time"
 
-	tcclient "github.com/taskcluster/taskcluster/v40/clients/client-go"
-	"github.com/taskcluster/taskcluster/v40/clients/client-go/tcqueue"
+	tcclient "github.com/taskcluster/taskcluster/v41/clients/client-go"
+	"github.com/taskcluster/taskcluster/v41/clients/client-go/tcqueue"
 )
 
 func createRedirectArtifact(queue *tcqueue.Queue, claim *tcqueue.TaskClaim, name, url, contentType string, expires time.Time) error {
@@ -32,10 +32,11 @@ func createRedirectArtifact(queue *tcqueue.Queue, claim *tcqueue.TaskClaim, name
 	return err
 }
 
-func createLinkArtifact(queue *tcqueue.Queue, claim *tcqueue.TaskClaim, name, target string, expires time.Time) error {
+func createLinkArtifact(queue *tcqueue.Queue, claim *tcqueue.TaskClaim, name, contentType, target string, expires time.Time) error {
 	createReq := tcqueue.LinkArtifactRequest{
 		Expires:     tcclient.Time(expires),
 		StorageType: "link",
+		ContentType: contentType,
 		Artifact:    target,
 	}
 

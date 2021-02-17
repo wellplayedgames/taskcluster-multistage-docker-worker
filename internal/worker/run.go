@@ -11,8 +11,8 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/logrusorgru/aurora/v3"
-	"github.com/taskcluster/taskcluster/v40/clients/client-go/tcqueue"
-	"github.com/taskcluster/taskcluster/v40/clients/client-go/tcsecrets"
+	"github.com/taskcluster/taskcluster/v41/clients/client-go/tcqueue"
+	"github.com/taskcluster/taskcluster/v41/clients/client-go/tcsecrets"
 	"github.com/tidwall/gjson"
 	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/config"
 	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/cri"
@@ -24,16 +24,17 @@ import (
 
 const (
 	defaultTaskRunTimeout = 60 * 60 * time.Second
+	logContentType        = "text/plain"
 )
 
 func (w *Worker) uploadLog(log logr.Logger, queue *tcqueue.Queue, claim *tcqueue.TaskClaim, contents pubsubbuffer.WriteSubscribeCloser) {
-	err := createS3Artifact(queue, claim, liveLogBacking, "text/plain", time.Time(claim.Task.Expires), contents.Len(), contents.Subscribe(context.Background()))
+	err := createS3Artifact(queue, claim, liveLogBacking, logContentType, time.Time(claim.Task.Expires), contents.Len(), contents.Subscribe(context.Background()))
 	if err != nil {
 		log.Error(err, "failed to upload live log")
 		return
 	}
 
-	err = createLinkArtifact(queue, claim, liveLogName, liveLogBacking, time.Time(claim.Task.Expires))
+	err = createLinkArtifact(queue, claim, liveLogName, logContentType, liveLogBacking, time.Time(claim.Task.Expires))
 	if err != nil {
 		log.Error(err, "failed to redirect live log to backing")
 		return
@@ -317,11 +318,7 @@ func (w *Worker) RunTask(ctx context.Context, slot int, claim *tcqueue.TaskClaim
 
 	liveLogr.Info(aurora.Green("Starting task on multistage-docker-worker").String())
 
-	err := createRedirectArtifact(queue, claim, liveLogInProgress, logUrl, "text/plain", time.Time(claim.Task.Expires))
-	if err == nil {
-		err = createLinkArtifact(queue, claim, liveLogName, liveLogInProgress, time.Time(claim.Task.Expires))
-	}
-
+	err := createRedirectArtifact(queue, claim, liveLogName, logUrl, logContentType, time.Time(claim.Task.Expires))
 	if err != nil {
 		log.Error(err, "error creating live-log")
 		queue.ReportException(claim.Status.TaskID, runIdStr, &tcqueue.TaskExceptionRequest{

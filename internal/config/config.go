@@ -5,7 +5,7 @@
 package config
 
 import (
-	"github.com/taskcluster/taskcluster/v40/clients/client-go"
+	"github.com/taskcluster/taskcluster/v41/clients/client-go"
 )
 
 // Config is the configuration which is used to run this worker.
@@ -45,7 +45,7 @@ var DefaultConfig = Config{
 	LiveLogPort: 13000,
 
 	DindImage:             "docker:dind",
-	TaskclusterProxyImage: "taskcluster/taskcluster-proxy:v40.0.3",
+	TaskclusterProxyImage: "taskcluster/taskcluster-proxy:v41.0.0",
 
 	ConcurrentTasks: 1,
 }

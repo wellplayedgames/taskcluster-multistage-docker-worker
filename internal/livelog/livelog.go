@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	"github.com/taskcluster/taskcluster/v40/clients/client-go/tcauth"
-	"github.com/taskcluster/taskcluster/v40/tools/websocktunnel/client"
-	"github.com/taskcluster/taskcluster/v40/tools/websocktunnel/util"
+	"github.com/taskcluster/taskcluster/v41/clients/client-go/tcauth"
+	"github.com/taskcluster/taskcluster/v41/tools/websocktunnel/client"
+	"github.com/taskcluster/taskcluster/v41/tools/websocktunnel/util"
 	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/config"
 	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/pubsubbuffer"
 )
