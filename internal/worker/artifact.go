@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"time"
 
-	tcclient "github.com/taskcluster/taskcluster/v37/clients/client-go"
-	"github.com/taskcluster/taskcluster/v37/clients/client-go/tcqueue"
+	tcclient "github.com/taskcluster/taskcluster/v41/clients/client-go"
+	"github.com/taskcluster/taskcluster/v41/clients/client-go/tcqueue"
 )
 
 func createRedirectArtifact(queue *tcqueue.Queue, claim *tcqueue.TaskClaim, name, url, contentType string, expires time.Time) error {
@@ -19,6 +19,25 @@ func createRedirectArtifact(queue *tcqueue.Queue, claim *tcqueue.TaskClaim, name
 		Expires:     tcclient.Time(expires),
 		StorageType: "reference",
 		URL:         url,
+	}
+
+	reqBy, err := json.Marshal(&createReq)
+	if err != nil {
+		return err
+	}
+
+	req := tcqueue.PostArtifactRequest(reqBy)
+	runIdStr := strconv.FormatInt(claim.RunID, 10)
+	_, err = queue.CreateArtifact(claim.Status.TaskID, runIdStr, name, &req)
+	return err
+}
+
+func createLinkArtifact(queue *tcqueue.Queue, claim *tcqueue.TaskClaim, name, contentType, target string, expires time.Time) error {
+	createReq := tcqueue.LinkArtifactRequest{
+		Expires:     tcclient.Time(expires),
+		StorageType: "link",
+		ContentType: contentType,
+		Artifact:    target,
 	}
 
 	reqBy, err := json.Marshal(&createReq)

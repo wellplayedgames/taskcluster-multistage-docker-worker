@@ -9,16 +9,16 @@ import (
 
 	"github.com/cenkalti/backoff/v3"
 	"github.com/go-logr/logr"
-	tcclient "github.com/taskcluster/taskcluster/v37/clients/client-go"
-	"github.com/taskcluster/taskcluster/v37/clients/client-go/tcqueue"
+	tcclient "github.com/taskcluster/taskcluster/v41/clients/client-go"
+	"github.com/taskcluster/taskcluster/v41/clients/client-go/tcqueue"
 	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/config"
 	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/cri"
 	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/livelog"
 )
 
 const (
-	liveLogName    = "public/logs/live.log"
-	liveLogBacking = "public/logs/live-backing.log"
+	liveLogName       = "public/logs/live.log"
+	liveLogBacking    = "public/logs/live-backing.log"
 
 	reclaimSafetyInterval = 60 * time.Second
 )
@@ -106,7 +106,10 @@ func (w *Worker) Run(ctx context.Context, gracefulStop <-chan struct{}) error {
 		for req := range workReq {
 			err := backoff.Retry(func() error {
 				for {
-					resp, err := safeQueue.ClaimWork(config.ProvisionerID, config.WorkerType, &tcqueue.ClaimWorkRequest{
+					// TODO: Once generic-worker accepts taskQueueId, we can migrate
+					// away from supporting the old provisionerId/workerId combo.
+					taskQueueID := fmt.Sprintf("%s/%s", config.ProvisionerID, config.WorkerType)
+					resp, err := safeQueue.ClaimWork(taskQueueID, &tcqueue.ClaimWorkRequest{
 						Tasks:       int64(req),
 						WorkerGroup: config.WorkerGroup,
 						WorkerID:    config.WorkerID,
@@ -188,7 +191,7 @@ func (w *Worker) Run(ctx context.Context, gracefulStop <-chan struct{}) error {
 
 			now := time.Now()
 			if config.ShutdownOnIdleSeconds != nil && len(resp.Tasks) == 0 && idleSince != nil {
-				if now.Sub(*idleSince) > time.Duration(*config.ShutdownOnIdleSeconds) * time.Second {
+				if now.Sub(*idleSince) > time.Duration(*config.ShutdownOnIdleSeconds)*time.Second {
 					w.log.Info("Idle, shutting down")
 					return w.shutdown()
 				}
