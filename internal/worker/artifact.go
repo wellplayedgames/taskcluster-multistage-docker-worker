@@ -81,7 +81,7 @@ func createS3Artifact(queue *tcqueue.Queue, claim *tcqueue.TaskClaim, name, cont
 	}
 
 	putReq.Header.Set("Content-Type", resp.ContentType)
-	putReq.ContentLength = int64(contentLen)
+	putReq.ContentLength = contentLen
 
 	putResp, err := http.DefaultClient.Do(putReq)
 	if err != nil {

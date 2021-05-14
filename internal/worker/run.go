@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"archive/tar"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -250,16 +251,46 @@ func (w *Worker) uploadArtifact(
 		}
 	}()
 
+	if info.IsDir() {
+		err = fmt.Errorf("directory artifacts are not supported")
+		return
+	}
+
 	expiresAt := time.Time(claim.Task.Expires)
 	size := info.Size()
+
+	tr := tar.NewReader(r)
+	header, err := tr.Next()
+	if err != nil {
+		return
+	}
+
+	log.Info("uploading artifact",
+		"name", artifact.Name,
+		"path", artifact.Path,
+		"size", size,
+	)
+
+	if header.Size != info.Size() {
+		err = fmt.Errorf("file is wrong size")
+		return
+	}
 
 	credentials := taskCredentials(&claim.Credentials)
 	queue := tcqueue.New(credentials, w.config.RootURL)
 	queue.Context = ctx
-	err = createS3Artifact(queue, claim, artifact.Name, artifact.ContentType, expiresAt, size, r)
+	err = createS3Artifact(queue, claim, artifact.Name, artifact.ContentType, expiresAt, size, tr)
 	if err != nil {
 		return
 	}
+
+	_, err = tr.Next()
+	if err != io.EOF {
+		err = fmt.Errorf("unexpected tar files")
+		return
+	}
+
+	err = nil
 }
 
 func (w *Worker) runTaskLogic(ctx context.Context, syslog, log logr.Logger, claim *tcqueue.TaskClaim) error {
