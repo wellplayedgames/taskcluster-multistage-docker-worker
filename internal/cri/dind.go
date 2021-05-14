@@ -15,6 +15,7 @@ import (
 	"github.com/docker/cli/cli/config/configfile"
 	"github.com/docker/docker/client"
 	"github.com/go-logr/logr"
+
 	lg "github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/log"
 )
 
@@ -197,7 +198,7 @@ func (d *dindFactory) SandboxCreate(ctx context.Context, log logr.Logger, name s
 		return nil, err
 	}
 
-	rd, err := container.ReadFiles(ctx, "/certs/client")
+	rd, _, err := container.ReadFiles(ctx, "/certs/client")
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch dind tls: %w", err)
 	}
