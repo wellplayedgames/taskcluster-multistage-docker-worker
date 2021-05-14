@@ -1,6 +1,6 @@
 module github.com/wellplayedgames/taskcluster-multistage-docker-worker
 
-go 1.15
+go 1.16
 
 require (
 	github.com/alecthomas/kong v0.2.11

@@ -51,7 +51,7 @@ func createLinkArtifact(queue *tcqueue.Queue, claim *tcqueue.TaskClaim, name, co
 	return err
 }
 
-func createS3Artifact(queue *tcqueue.Queue, claim *tcqueue.TaskClaim, name, contentType string, expires time.Time, contentLen int, r io.Reader) error {
+func createS3Artifact(queue *tcqueue.Queue, claim *tcqueue.TaskClaim, name, contentType string, expires time.Time, contentLen int64, r io.Reader) error {
 	createReq := tcqueue.S3ArtifactRequest{
 		ContentType: contentType,
 		Expires:     tcclient.Time(expires),
@@ -81,7 +81,7 @@ func createS3Artifact(queue *tcqueue.Queue, claim *tcqueue.TaskClaim, name, cont
 	}
 
 	putReq.Header.Set("Content-Type", resp.ContentType)
-	putReq.ContentLength = int64(contentLen)
+	putReq.ContentLength = contentLen
 
 	putResp, err := http.DefaultClient.Do(putReq)
 	if err != nil {

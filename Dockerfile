@@ -1,4 +1,4 @@
-FROM golang:1.13 as build
+FROM golang:1.16 as build
 
 WORKDIR /workspace
 ENV TASKCLUSTER_VERSION=v41.0.0
