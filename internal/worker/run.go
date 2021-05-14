@@ -212,6 +212,69 @@ func (w *Worker) runStep(
 	log.Info(aurora.Green("Step completed").String())
 }
 
+func (w *Worker) uploadArtifactImpl(
+	ctx context.Context, log logr.Logger, claim *tcqueue.TaskClaim,
+	rootContainer cri.Container, artifact *config.Artifact,
+) error {
+	if artifact.Type != config.FileArtifact {
+		return fmt.Errorf("only file artifacts are supported")
+	}
+
+	srcPath := artifact.Path
+	if !path.IsAbs(srcPath) {
+		srcPath = path.Join(workspaceDir, artifact.Path)
+	}
+
+	var r io.ReadCloser
+	r, info, err := rootContainer.ReadFiles(ctx, srcPath)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := r.Close(); err != nil {
+			log.Error(err, "failed to close artifact file")
+		}
+	}()
+
+	if info.IsDir() {
+		return fmt.Errorf("directory artifacts are not supported")
+	}
+
+	expiresAt := time.Time(claim.Task.Expires)
+	size := info.Size()
+
+	tr := tar.NewReader(r)
+	header, err := tr.Next()
+	if err != nil {
+		return err
+	}
+
+	log.Info("uploading artifact",
+		"name", artifact.Name,
+		"path", artifact.Path,
+		"size", size,
+	)
+
+	if header.Size != info.Size() {
+		return fmt.Errorf("file is wrong size")
+	}
+
+	credentials := taskCredentials(&claim.Credentials)
+	queue := tcqueue.New(credentials, w.config.RootURL)
+	queue.Context = ctx
+	err = createS3Artifact(queue, claim, artifact.Name, artifact.ContentType, expiresAt, size, tr)
+	if err != nil {
+		return err
+	}
+
+	_, err = tr.Next()
+	if err != io.EOF {
+		return fmt.Errorf("unexpected tar files")
+	}
+
+	return nil
+}
+
 func (w *Worker) uploadArtifact(
 	ctx context.Context, log logr.Logger, claim *tcqueue.TaskClaim,
 	rootContainer cri.Container, artifact *config.Artifact,
@@ -231,67 +294,7 @@ func (w *Worker) uploadArtifact(
 		}
 	}
 
-	if artifact.Type != config.FileArtifact {
-		err = fmt.Errorf("only file artifacts are supported")
-		return
-	}
-
-	srcPath := artifact.Path
-	if !path.IsAbs(srcPath) {
-		srcPath = path.Join(workspaceDir, artifact.Path)
-	}
-
-	var r io.ReadCloser
-	r, info, err := rootContainer.ReadFiles(ctx, srcPath)
-	if err != nil {
-		return
-	}
-	defer func() {
-		if err := r.Close(); err != nil {
-			log.Error(err, "failed to close artifact file")
-		}
-	}()
-
-	if info.IsDir() {
-		err = fmt.Errorf("directory artifacts are not supported")
-		return
-	}
-
-	expiresAt := time.Time(claim.Task.Expires)
-	size := info.Size()
-
-	tr := tar.NewReader(r)
-	header, err := tr.Next()
-	if err != nil {
-		return
-	}
-
-	log.Info("uploading artifact",
-		"name", artifact.Name,
-		"path", artifact.Path,
-		"size", size,
-	)
-
-	if header.Size != info.Size() {
-		err = fmt.Errorf("file is wrong size")
-		return
-	}
-
-	credentials := taskCredentials(&claim.Credentials)
-	queue := tcqueue.New(credentials, w.config.RootURL)
-	queue.Context = ctx
-	err = createS3Artifact(queue, claim, artifact.Name, artifact.ContentType, expiresAt, size, tr)
-	if err != nil {
-		return
-	}
-
-	_, err = tr.Next()
-	if err != io.EOF {
-		err = fmt.Errorf("unexpected tar files")
-		return
-	}
-
-	err = nil
+	err = w.uploadArtifactImpl(ctx, log, claim, rootContainer, artifact)
 }
 
 func (w *Worker) runTaskLogic(ctx context.Context, syslog, log logr.Logger, claim *tcqueue.TaskClaim) error {
