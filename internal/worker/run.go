@@ -27,6 +27,7 @@ import (
 const (
 	defaultTaskRunTimeout = 60 * 60 * time.Second
 	logContentType        = "text/plain"
+	workspaceDir          = "/workspace"
 )
 
 func (w *Worker) uploadLog(
@@ -160,7 +161,7 @@ func (w *Worker) runStep(
 		env[e.Name] = value
 	}
 
-	workingDir := "/workspace"
+	workingDir := workspaceDir
 	containerName := fmt.Sprintf("step-%d", stepIdx)
 
 	if step.WorkingDir != "" {
@@ -237,7 +238,7 @@ func (w *Worker) uploadArtifact(
 
 	srcPath := artifact.Path
 	if !path.IsAbs(srcPath) {
-		srcPath = path.Join("/workspace", artifact.Path)
+		srcPath = path.Join(workspaceDir, artifact.Path)
 	}
 
 	var r io.ReadCloser
@@ -327,7 +328,7 @@ func (w *Worker) runTaskLogic(ctx context.Context, syslog, log logr.Logger, clai
 		Name:  "taskcluster-proxy",
 		Image: w.config.TaskclusterProxyImage,
 		Volumes: map[string]struct{}{
-			"/workspace": {},
+			workspaceDir: {},
 			"/home":      {},
 			"/root":      {},
 		},
