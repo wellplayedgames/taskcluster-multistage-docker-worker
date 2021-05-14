@@ -1,4 +1,4 @@
-// This package contains the container runtime interface abstraction. This
+// Package cri contains the container runtime interface abstraction. This
 // exists to abstract Docker and Docker-in-Docker away from the main worker
 // implementation.
 package cri
@@ -6,6 +6,7 @@ package cri
 import (
 	"context"
 	"io"
+	"io/fs"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -47,7 +48,7 @@ type Container interface {
 	Run(ctx context.Context, stdout, stderr io.Writer) (int, error)
 	Remove(ctx context.Context) error
 
-	ReadFiles(ctx context.Context, path string) (io.ReadCloser, error)
+	ReadFiles(ctx context.Context, path string) (io.ReadCloser, fs.FileInfo, error)
 }
 
 // Sandbox represents a CRI which can be deleted.

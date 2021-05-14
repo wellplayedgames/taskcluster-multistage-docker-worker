@@ -11,6 +11,7 @@ import (
 	"github.com/go-logr/logr"
 	tcclient "github.com/taskcluster/taskcluster/v41/clients/client-go"
 	"github.com/taskcluster/taskcluster/v41/clients/client-go/tcqueue"
+
 	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/config"
 	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/cri"
 	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/livelog"
@@ -211,7 +212,7 @@ func (w *Worker) Run(ctx context.Context, gracefulStop <-chan struct{}) error {
 					defer func() {
 						completedTasks <- slot
 					}()
-					w.RunTask(ctx, slot, claim)
+					w.RunTask(ctx, claim)
 				}()
 			}
 

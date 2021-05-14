@@ -29,11 +29,28 @@ type Step struct {
 	Privileged bool     `json:"privileged,omitempty"`
 }
 
+// ArtifactType is used to determine how to upload artifacts
+type ArtifactType string
+
+const (
+	// FileArtifact uploads a single file verbatim
+	FileArtifact ArtifactType = "file"
+)
+
+// Artifact is the information required to upload a single artifact.
+type Artifact struct {
+	Name        string       `json:"name,omitempty"`
+	Path        string       `json:"path,omitempty"`
+	Type        ArtifactType `json:"type,omitempty"`
+	ContentType string       `json:"contentType,omitempty"`
+}
+
 // Payload contains the entire payload for a task.
 type Payload struct {
 	MaxRunTime int    `json:"maxRunTime,omitempty"`
-	Steps      []Step `json:"steps"`
+	Steps      []Step `json:"steps,omitempty"`
 
 	// Environment shared between steps.
-	Env []EnvVar `json:"env,omitempty"`
+	Env       []EnvVar   `json:"env,omitempty"`
+	Artifacts []Artifact `json:"artifacts,omitempty"`
 }

@@ -14,12 +14,13 @@ import (
 	"github.com/taskcluster/taskcluster/v41/clients/client-go/tcqueue"
 	"github.com/taskcluster/taskcluster/v41/clients/client-go/tcsecrets"
 	"github.com/tidwall/gjson"
+	"github.com/wojas/genericr"
+
 	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/config"
 	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/cri"
 	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/exception"
 	lg "github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/log"
 	"github.com/wellplayedgames/taskcluster-multistage-docker-worker/internal/pubsubbuffer"
-	"github.com/wojas/genericr"
 )
 
 const (
@@ -27,8 +28,15 @@ const (
 	logContentType        = "text/plain"
 )
 
-func (w *Worker) uploadLog(log logr.Logger, queue *tcqueue.Queue, claim *tcqueue.TaskClaim, contents pubsubbuffer.WriteSubscribeCloser) {
-	err := createS3Artifact(queue, claim, liveLogBacking, logContentType, time.Time(claim.Task.Expires), contents.Len(), contents.Subscribe(context.Background()))
+func (w *Worker) uploadLog(
+	log logr.Logger, queue *tcqueue.Queue,
+	claim *tcqueue.TaskClaim,
+	contents pubsubbuffer.WriteSubscribeCloser,
+) {
+	err := createS3Artifact(
+		queue, claim, liveLogBacking, logContentType,
+		time.Time(claim.Task.Expires), int64(contents.Len()),
+		contents.Subscribe(context.Background()))
 	if err != nil {
 		log.Error(err, "failed to upload live log")
 		return
@@ -62,7 +70,10 @@ func watchContainer(ctx context.Context, log logr.Logger, container cri.Containe
 	log.Info("Container exited", "exitCode", exitCode)
 }
 
-func (w *Worker) resolveValueFrom(ctx context.Context, claim *tcqueue.TaskClaim, valueFrom *config.ValueFrom) (result string, err error) {
+func (w *Worker) resolveValueFrom(
+	ctx context.Context, claim *tcqueue.TaskClaim,
+	valueFrom *config.ValueFrom,
+) (result string, err error) {
 	if valueFrom == nil {
 		return "", nil
 	}
@@ -85,7 +96,13 @@ func (w *Worker) resolveValueFrom(ctx context.Context, claim *tcqueue.TaskClaim,
 	return
 }
 
-func (w *Worker) runStep(ctx context.Context, log logr.Logger, sandbox cri.CRI, claim *tcqueue.TaskClaim, rootContainer cri.Container, stepIdx int, payload *config.Payload, deps []<-chan error, ch chan<- error) {
+func (w *Worker) runStep(
+	ctx context.Context, log logr.Logger,
+	sandbox cri.CRI, claim *tcqueue.TaskClaim,
+	rootContainer cri.Container, stepIdx int,
+	payload *config.Payload,
+	deps []<-chan error, ch chan<- error,
+) {
 	pullLog := log.WithName(fmt.Sprintf("pull %d", stepIdx))
 	log = log.WithName(fmt.Sprintf("step %d", stepIdx))
 	step := &payload.Steps[stepIdx]
@@ -171,7 +188,9 @@ func (w *Worker) runStep(ctx context.Context, log logr.Logger, sandbox cri.CRI, 
 	}
 	defer cleanupContainer(log, container)
 
-	log.Info(aurora.Green("Starting step").String(), "command", step.Command, "args", step.Args)
+	log.Info(
+		aurora.Green("Starting step").String(),
+		"command", step.Command, "args", step.Args)
 
 	outRead, outWrite := io.Pipe()
 	errRead, errWrite := io.Pipe()
@@ -191,7 +210,59 @@ func (w *Worker) runStep(ctx context.Context, log logr.Logger, sandbox cri.CRI, 
 	log.Info(aurora.Green("Step completed").String())
 }
 
-func (w *Worker) runTaskLogic(ctx context.Context, syslog, log logr.Logger, slot int, claim *tcqueue.TaskClaim, wr io.Writer) error {
+func (w *Worker) uploadArtifact(
+	ctx context.Context, log logr.Logger, claim *tcqueue.TaskClaim,
+	rootContainer cri.Container, artifact *config.Artifact,
+	deps []<-chan error, ch chan<- error,
+) {
+	var err error
+	defer func() {
+		ch <- err
+		close(ch)
+	}()
+
+	// Wait for all dependencies.
+	for _, ch := range deps {
+		err = <-ch
+		if err != nil {
+			return
+		}
+	}
+
+	if artifact.Type != config.FileArtifact {
+		err = fmt.Errorf("only file artifacts are supported")
+		return
+	}
+
+	srcPath := artifact.Path
+	if !path.IsAbs(srcPath) {
+		srcPath = path.Join("/workspace", artifact.Path)
+	}
+
+	var r io.ReadCloser
+	r, info, err := rootContainer.ReadFiles(ctx, srcPath)
+	if err != nil {
+		return
+	}
+	defer func() {
+		if err := r.Close(); err != nil {
+			log.Error(err, "failed to close artifact file")
+		}
+	}()
+
+	expiresAt := time.Time(claim.Task.Expires)
+	size := info.Size()
+
+	credentials := taskCredentials(&claim.Credentials)
+	queue := tcqueue.New(credentials, w.config.RootURL)
+	queue.Context = ctx
+	err = createS3Artifact(queue, claim, artifact.Name, artifact.ContentType, expiresAt, size, r)
+	if err != nil {
+		return
+	}
+}
+
+func (w *Worker) runTaskLogic(ctx context.Context, syslog, log logr.Logger, claim *tcqueue.TaskClaim) error {
 	var payload config.Payload
 	err := json.Unmarshal(claim.Task.Payload, &payload)
 	if err != nil {
@@ -225,9 +296,9 @@ func (w *Worker) runTaskLogic(ctx context.Context, syslog, log logr.Logger, slot
 		Name:  "taskcluster-proxy",
 		Image: w.config.TaskclusterProxyImage,
 		Volumes: map[string]struct{}{
-			"/workspace": struct{}{},
-			"/home":      struct{}{},
-			"/root":      struct{}{},
+			"/workspace": {},
+			"/home":      {},
+			"/root":      {},
 		},
 		Entrypoint: []string{"/taskcluster-proxy"},
 		Env: map[string]string{
@@ -243,16 +314,39 @@ func (w *Worker) runTaskLogic(ctx context.Context, syslog, log logr.Logger, slot
 	defer cleanupContainer(log, proxyContainer)
 
 	startCh := make(chan error, 1)
-	nextCh := startCh
 	exitCh := make(chan error, 1)
+	leaves := []<-chan error{startCh}
 	go watchContainer(ctx, syslog, proxyContainer, exitCh)
 
 	// Configure containers
 	for idx := range payload.Steps {
 		stepCh := make(chan error, 1)
-		go w.runStep(ctx, log, sandbox, claim, proxyContainer, idx, &payload, []<-chan error{nextCh}, stepCh)
-		nextCh = stepCh
+		go w.runStep(ctx, log, sandbox, claim, proxyContainer, idx, &payload, leaves, stepCh)
+		leaves = []<-chan error{stepCh}
 	}
+
+	// Configure artifact uploads
+	artifactDependencies := leaves
+	leaves = make([]<-chan error, len(payload.Artifacts))
+	for idx := range payload.Artifacts {
+		artifact := &payload.Artifacts[idx]
+		stepCh := make(chan error, 1)
+		go w.uploadArtifact(ctx, log, claim, proxyContainer, artifact, artifactDependencies, stepCh)
+		leaves[idx] = stepCh
+	}
+
+	// Gather all leaves
+	nextCh := make(chan error, 1)
+	go func() {
+		defer close(nextCh)
+
+		for _, ch := range leaves {
+			if err := <-ch; err != nil {
+				nextCh <- err
+				return
+			}
+		}
+	}()
 
 	// Start containers
 	close(startCh)
@@ -270,7 +364,7 @@ func (w *Worker) runTaskLogic(ctx context.Context, syslog, log logr.Logger, slot
 }
 
 // RunTask runs a single task run to completion.
-func (w *Worker) RunTask(ctx context.Context, slot int, claim *tcqueue.TaskClaim) {
+func (w *Worker) RunTask(ctx context.Context, claim *tcqueue.TaskClaim) {
 	log := w.log.WithValues("taskId", claim.Status.TaskID, "runId", claim.RunID)
 	log.Info("Starting task run")
 	defer log.Info("Finished task run")
@@ -284,7 +378,9 @@ func (w *Worker) RunTask(ctx context.Context, slot int, claim *tcqueue.TaskClaim
 	var exitErr error = exception.InternalError(fmt.Errorf("never finished"))
 	logUrl, liveLog := w.livelog.Allocate()
 	liveLogr := genericr.New(func(e genericr.Entry) {
-		fmt.Fprintf(liveLog, "%s\n", lg.FancyLog(e))
+		if _, err := fmt.Fprintf(liveLog, "%s\n", lg.FancyLog(e)); err != nil {
+			log.Error(err, "failed to write to live log")
+		}
 	})
 	defer func() {
 		err := exitErr
@@ -294,7 +390,9 @@ func (w *Worker) RunTask(ctx context.Context, slot int, claim *tcqueue.TaskClaim
 			liveLogr.Info(aurora.Green("Task completed").String())
 		}
 
-		liveLog.Close()
+		if err := liveLog.Close(); err != nil {
+			log.Error(err, "failed to close livelog")
+		}
 		w.uploadLog(log, queue, claim, liveLog)
 
 		if err == nil {
@@ -321,9 +419,12 @@ func (w *Worker) RunTask(ctx context.Context, slot int, claim *tcqueue.TaskClaim
 	err := createRedirectArtifact(queue, claim, liveLogName, logUrl, logContentType, time.Time(claim.Task.Expires))
 	if err != nil {
 		log.Error(err, "error creating live-log")
-		queue.ReportException(claim.Status.TaskID, runIdStr, &tcqueue.TaskExceptionRequest{
+		_, err = queue.ReportException(claim.Status.TaskID, runIdStr, &tcqueue.TaskExceptionRequest{
 			Reason: "internal-error",
 		})
+		if err != nil {
+			log.Error(err, "failed to report exception")
+		}
 		return
 	}
 
@@ -338,7 +439,7 @@ func (w *Worker) RunTask(ctx context.Context, slot int, claim *tcqueue.TaskClaim
 		defer func() {
 			doneCh <- err
 		}()
-		err = w.runTaskLogic(ctx, log, liveLogr, slot, claim, liveLog)
+		err = w.runTaskLogic(ctx, log, liveLogr, claim)
 	}()
 
 	for {
@@ -353,6 +454,7 @@ func (w *Worker) RunTask(ctx context.Context, slot int, claim *tcqueue.TaskClaim
 			claim.Credentials = resp.Credentials
 			claim.TakenUntil = resp.TakenUntil
 			credentials = taskCredentials(&resp.Credentials)
+			queue.Credentials = credentials
 
 		case exitErr = <-doneCh:
 			return

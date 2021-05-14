@@ -7,11 +7,13 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/docker/distribution/reference"
 	"io"
+	"io/fs"
 	"io/ioutil"
 	"strings"
 	"time"
+
+	"github.com/docker/distribution/reference"
 
 	"github.com/docker/cli/cli/config/configfile"
 	ctypes "github.com/docker/cli/cli/config/types"
@@ -274,7 +276,41 @@ func (d *dockerContainer) Remove(ctx context.Context) error {
 	})
 }
 
-func (d *dockerContainer) ReadFiles(ctx context.Context, path string) (io.ReadCloser, error) {
-	rd, _, err := d.client.CopyFromContainer(ctx, d.id, path)
-	return rd, err
+func (d *dockerContainer) ReadFiles(ctx context.Context, path string) (io.ReadCloser, fs.FileInfo, error) {
+	rd, stat, err := d.client.CopyFromContainer(ctx, d.id, path)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	fileInfo := &dockerFileInfo{stat}
+	return rd, fileInfo, nil
+}
+
+type dockerFileInfo struct {
+	types.ContainerPathStat
+}
+var _ fs.FileInfo = (*dockerFileInfo)(nil)
+
+func (d *dockerFileInfo) Name() string {
+	return d.ContainerPathStat.Name
+}
+
+func (d *dockerFileInfo) Size() int64 {
+	return d.ContainerPathStat.Size
+}
+
+func (d *dockerFileInfo) Mode() fs.FileMode {
+	return d.ContainerPathStat.Mode
+}
+
+func (d *dockerFileInfo) ModTime() time.Time {
+	return d.ContainerPathStat.Mtime
+}
+
+func (d *dockerFileInfo) IsDir() bool {
+	return d.ContainerPathStat.Mode.IsDir()
+}
+
+func (d *dockerFileInfo) Sys() interface{} {
+	return nil
 }
