@@ -361,13 +361,15 @@ func (w *Worker) runTaskLogic(ctx context.Context, syslog, log logr.Logger, clai
 	}
 
 	// Configure artifact uploads
-	artifactDependencies := leaves
-	leaves = make([]<-chan error, len(payload.Artifacts))
-	for idx := range payload.Artifacts {
-		artifact := &payload.Artifacts[idx]
-		stepCh := make(chan error, 1)
-		go w.uploadArtifact(ctx, log, claim, proxyContainer, artifact, artifactDependencies, stepCh)
-		leaves[idx] = stepCh
+	if len(payload.Artifacts) > 0 {
+		artifactDependencies := leaves
+		leaves = make([]<-chan error, len(payload.Artifacts))
+		for idx := range payload.Artifacts {
+			artifact := &payload.Artifacts[idx]
+			stepCh := make(chan error, 1)
+			go w.uploadArtifact(ctx, log, claim, proxyContainer, artifact, artifactDependencies, stepCh)
+			leaves[idx] = stepCh
+		}
 	}
 
 	// Gather all leaves
