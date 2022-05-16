@@ -21,7 +21,7 @@ require (
 	github.com/opencontainers/runc v0.1.1 // indirect
 	github.com/taskcluster/slugid-go v1.1.0
 	github.com/taskcluster/taskcluster/v41 v41.0.1
-	github.com/tidwall/gjson v1.6.1
+	github.com/tidwall/gjson v1.9.3
 	github.com/wojas/genericr v0.2.0
 	go.uber.org/zap v1.10.0
 	gotest.tools/v3 v3.0.2 // indirect
